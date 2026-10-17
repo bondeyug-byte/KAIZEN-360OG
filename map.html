@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Campus360 · Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    html, body { height: 100%; margin: 0; font-family: system-ui, sans-serif; }
+    header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #7f1d3a; color: #fff; height: 56px; box-sizing: border-box; }
+    header a { color: #fff; text-decoration: none; font-weight: 600; font-size: 14px; padding: 6px 10px; border: 1px solid rgba(255,255,255,.4); border-radius: 8px; }
+    header h1 { font-size: 16px; margin: 0; }
+    #map { height: calc(100% - 56px); width: 100%; }
+    #msg { position: absolute; z-index: 1000; top: 70px; left: 50%; transform: translateX(-50%); background: #fff; padding: 8px 14px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.2); display: none; }
+  </style>
+</head>
+<body>
+  <header><a href="/">← Back</a><h1>Campus360 · Map</h1></header>
+  <div id="msg"></div>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    var map = L.map("map").setView([19.0459, 72.8896], 15);
+
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(map);
+
+    var COLORS = { campus: "#7f1d3a", station: "#1d4ed8", other: "#047857" };
+
+    fetch("/api/places")
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (places) {
+        var markers = places.map(function (p) {
+          var m = L.circleMarker([p.lat, p.lng], {
+            radius: 9, color: "#fff", weight: 2,
+            fillColor: COLORS[p.category] || COLORS.other, fillOpacity: 1
+          }).addTo(map);
+          // build the popup with text nodes so place names can't inject HTML
+          var box = document.createElement("div");
+          var b = document.createElement("b"); b.textContent = p.name;
+          box.appendChild(b);
+          if (p.note) { box.appendChild(document.createElement("br")); box.appendChild(document.createTextNode(p.note)); }
+          m.bindPopup(box);
+          return m;
+        });
+        if (markers.length) map.fitBounds(L.featureGroup(markers).getBounds().pad(0.2));
+      })
+      .catch(function () {
+        var el = document.getElementById("msg");
+        el.textContent = "Couldn't load places. Try again later.";
+        el.style.display = "block";
+      });
+  </script>
+</body>
+</html>
