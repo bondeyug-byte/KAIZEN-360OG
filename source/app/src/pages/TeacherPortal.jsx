@@ -5,6 +5,7 @@ import Icon from '../components/Icon.jsx'
 import AudiencePicker from '../components/AudiencePicker.jsx'
 import { FilePicker, ResourceViewer, ReviewList, TeacherChallenges } from './Challenges.jsx'
 import AttendanceDesk from './AttendanceDesk.jsx'
+import { TimetableSchedule } from './Portal.jsx'
 import { KIND, STATUS, SUBST, createPost, updatePost, setPostStatus, sentBy, subsFor, reviewAssignment, allowedDivisions, recipients, isAdmin } from '../lib/posts.js'
 import { postChallenge, setChallengeStatus, submissionsFor, SUB } from '../lib/challenges.js'
 import { putFile, deleteFile, fmtSize } from '../lib/files.js'
@@ -29,13 +30,14 @@ export default function TeacherPortal({ query = {} }) {
   return (
     <div>
       <PageHeader title="Teacher portal" subtitle="Send assignments, challenges, notices and documents to exact divisions, review submissions and record attendance." />
-      <div className="mb-4 overflow-x-auto"><Segmented label="Teacher section" value={tab} onChange={setTab} options={[{ value: 'overview', label: 'My classes' }, { value: 'compose', label: 'Create & send' }, { value: 'sent', label: 'Sent items' }, { value: 'challenges', label: 'Challenges' }, { value: 'subs', label: 'Submissions' }, { value: 'attendance', label: 'Attendance' }]} /></div>
+      <div className="mb-4 overflow-x-auto"><Segmented label="Teacher section" value={tab} onChange={setTab} options={[{ value: 'overview', label: 'My classes' }, { value: 'compose', label: 'Create & send' }, { value: 'sent', label: 'Sent items' }, { value: 'challenges', label: 'Challenges' }, { value: 'subs', label: 'Submissions' }, { value: 'attendance', label: 'Attendance' }, { value: 'timetable', label: 'Timetable Schedule' }]} /></div>
       {tab === 'overview' && <Overview go={setTab} />}
       {tab === 'compose' && <Compose key={query.kind || 'any'} existing={query.kind ? { kind: query.kind } : undefined} onDone={() => setTab(query.kind === 'challenge' ? 'challenges' : 'sent')} />}
       {tab === 'challenges' && <TeacherChallenges query={query} embedded />}
       {tab === 'sent' && <Sent />}
       {tab === 'subs' && <Submissions initial={query.id} />}
       {tab === 'attendance' && <AttendanceDesk />}
+      {tab === 'timetable' && <TimetableTab />}
     </div>
   )
 }
@@ -257,4 +259,12 @@ function Submissions({ initial }) {
       </Card>
     </div>
   )
+}
+
+/** Teacher portal → Timetable Schedule: the Excel importer (stored on the college server, so phone sign-in only). */
+function TimetableTab() {
+  const { session } = useApp()
+  if (session.mode !== 'minimoth' || !session.cloud) return <Empty icon="lock" title="Sign in with your phone to publish timetables">Timetables are stored on the college server and checked there, so this needs a teacher number registered by the HOD. Demo accounts can’t publish.</Empty>
+  if (!session.teacher && !session.admin) return <Empty icon="lock" title="Not allowed">Only registered teachers and the HOD can publish timetables.</Empty>
+  return <TimetableSchedule />
 }

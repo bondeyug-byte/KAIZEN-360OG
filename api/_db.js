@@ -30,7 +30,20 @@ async function migrate(run = q) {
 }
 const ensureSchema = () => (ready = ready || migrate().catch((e) => { ready = null; throw e; }));
 
+/** Fixed-window rate limit. Returns true when the call is allowed. */
+async function allow(key, max, windowSec) {
+  const [r] = await q(
+    `insert into rate_limits (key, window_start, count) values ($1, now(), 1)
+     on conflict (key) do update set
+       count = case when rate_limits.window_start < now() - make_interval(secs => $2) then 1 else rate_limits.count + 1 end,
+       window_start = case when rate_limits.window_start < now() - make_interval(secs => $2) then now() else rate_limits.window_start end
+     returning count`, [key, windowSec]);
+  return r.count <= max;
+}
+const audit = (actor, action, target, detail) =>
+  q('insert into audit_log (actor, action, target, detail) values ($1, $2, $3, $4)', [actor || null, action, target || null, detail ? JSON.stringify(detail) : null]);
+
 /** Tests inject an in-memory Postgres. */
 function _setClient(fn) { client = fn; ready = null; }
 
-module.exports = { q, ensureSchema, migrate, _setClient };
+module.exports = { q, ensureSchema, migrate, allow, audit, _setClient };

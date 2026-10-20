@@ -23,10 +23,10 @@ export const roleOf = (u) => (u && ['teacher', 'organiser', 'admin'].includes(u.
 
 /** Routes each role may open. Admin keeps oversight of everything. */
 const ACCESS = {
-  student: ['/', '/navigator', '/classwork', '/attendance', '/planner', '/events', '/commute', '/canteen', '/rides', '/challenges', '/peer', '/notes', '/directory', '/notifications', '/profile', '/about'],
-  teacher: ['/', '/teacher', '/challenges', '/notes', '/navigator', '/commute', '/canteen', '/notifications', '/profile', '/about'],
+  student: ['/', '/portal', '/navigator', '/classwork', '/attendance', '/planner', '/events', '/commute', '/canteen', '/rides', '/challenges', '/peer', '/notes', '/directory', '/notifications', '/profile', '/about'],
+  teacher: ['/', '/portal', '/teacher', '/challenges', '/notes', '/navigator', '/commute', '/canteen', '/notifications', '/profile', '/about'],
   organiser: ['/', '/organiser', '/events', '/notifications', '/profile', '/about'],
-  admin: ['/', '/admin', '/teacher', '/navigator', '/classwork', '/attendance', '/planner', '/events', '/commute', '/canteen', '/rides', '/challenges', '/peer', '/notes', '/directory', '/notifications', '/profile', '/about'],
+  admin: ['/', '/portal', '/admin', '/teacher', '/navigator', '/classwork', '/attendance', '/planner', '/events', '/commute', '/canteen', '/rides', '/challenges', '/peer', '/notes', '/directory', '/notifications', '/profile', '/about'],
 }
 export const canAccess = (user, path) => ACCESS[roleOf(user)].includes(path)
 export const routesFor = (user) => ACCESS[roleOf(user)]

@@ -4,6 +4,7 @@ import { PageHeader, Card, CardTitle, Button, Badge, Field, inputCls, cx, Confir
 import Icon from '../components/Icon.jsx'
 import { CLASSES, CLASS_LABEL, INTEREST_OPTIONS } from '../data/config.js'
 import { maskPhone } from '../lib/auth.js'
+import { api } from '../lib/portal.js'
 import { YEARS, BRANCHES, divisionsFor, validateAcademic, divisionInfo, hasAcademicIdentity } from '../data/academics.js'
 import { isStudent } from '../lib/posts.js'
 import { studentSummary } from '../lib/attendance.js'
@@ -14,6 +15,7 @@ import { verificationOf } from '../lib/rides.js'
 export default function Profile({ query }) {
   const { me, db, now, session, updateProfile, resetDemo, signOut, pushToast, sync } = useApp()
   const locked = hasAcademicIdentity(me) && (me.academicLocked !== false)
+  const real = session.mode === 'minimoth' // real accounts choose from the college's real divisions
   const [acErr, setAcErr] = useState({})
   const initForm = (me) => ({ name: me.name || '', classId: me.classId || '', branch: me.branch || '', email: me.email || '', collegeId: me.collegeId || '', roll: me.roll || '', year: me.year || '', branchId: me.branchId || '', division: me.division || '', interests: me.interests || [], subjects: me.subjects || [] })
   const [f, setF] = useState(() => initForm(me))
@@ -30,13 +32,15 @@ export default function Profile({ query }) {
     setErr('')
     let ac = {}
     if (isStudent(me) && !locked) {
-      const e2 = validateAcademic(f, db.profiles, me.id); setAcErr(e2)
+      const e2 = validateAcademic(f, db.profiles, me.id, real); setAcErr(e2)
       if (Object.keys(e2).length) return
       ac = { year: f.year, branchId: f.branchId, division: f.division, roll: f.roll.trim(), academicLocked: true }
     }
     const { year, branchId, division, roll, ...rest } = f
     updateProfile({ ...rest, ...ac, name: f.name.trim(), branch: f.branch.trim() || (BRANCHES.find((b) => b.id === f.branchId)?.label || ''), email: f.email.trim(), collegeId: (f.collegeId || '').trim().slice(0, 30) })
     pushToast('Profile saved. Suggestions are updated.')
+    // Phone-verified students: choosing a division also asks to join that class (a class rep or the HOD approves it).
+    if (real && session.cloud && ac.division) api('join', { method: 'POST', body: { division: ac.division } }).then(() => pushToast(`Request sent to join ${ac.division}. Your class rep or the HOD will approve it in the College portal.`)).catch(() => {})
     if (query?.onboard) window.location.hash = '/'
   }
   return (
@@ -52,7 +56,7 @@ export default function Profile({ query }) {
               {isStudent(me) && <>
                 <Field label="Academic year" error={acErr.year}>{(id) => <select id={id} disabled={locked} className={inputCls} value={f.year} onChange={(e) => setF({ ...f, year: e.target.value, division: '' })}><option value="">Choose…</option>{YEARS.map((y) => <option key={y.id} value={y.id}>{y.label}</option>)}</select>}</Field>
                 <Field label="Branch" error={acErr.branchId}>{(id) => <select id={id} disabled={locked} className={inputCls} value={f.branchId} onChange={(e) => setF({ ...f, branchId: e.target.value, division: '' })}><option value="">Choose…</option>{BRANCHES.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}</select>}</Field>
-                <Field label="Division" error={acErr.division}>{(id) => <select id={id} disabled={locked || !f.year || !f.branchId} className={inputCls} value={f.division} onChange={(e) => setF({ ...f, division: e.target.value })}><option value="">{f.year && f.branchId ? 'Choose…' : 'Pick year and branch first'}</option>{divisionsFor(f.year, f.branchId).map((d) => <option key={d}>{d}</option>)}</select>}</Field>
+                <Field label="Division" error={acErr.division}>{(id) => <select id={id} disabled={locked || !f.year || !f.branchId} className={inputCls} value={f.division} onChange={(e) => setF({ ...f, division: e.target.value })}><option value="">{f.year && f.branchId ? 'Choose…' : 'Pick year and branch first'}</option>{divisionsFor(f.year, f.branchId, real).map((d) => <option key={d}>{d}</option>)}</select>}</Field>
                 <Field label="Roll number" error={acErr.roll}>{(id) => <input id={id} disabled={locked} className={inputCls} value={f.roll} onChange={(e) => setF({ ...f, roll: e.target.value })} />}</Field>
                 {locked && <p className="text-[12.5px] text-muted sm:col-span-2">{divisionInfo(me.division)?.label} · roll {me.roll}. Your division and roll number decide which classwork and attendance you see, so only an admin can change them.</p>}
                 <Field label="Timetable group">{(id) => <select id={id} className={inputCls} value={f.classId} onChange={(e) => setF({ ...f, classId: e.target.value })}><option value="">Choose…</option>{[...CLASSES, 'SE-A'].map((c) => <option key={c} value={c}>{CLASS_LABEL[c]}</option>)}</select>}</Field>

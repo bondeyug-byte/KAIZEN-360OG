@@ -99,7 +99,20 @@ function upstreamError(res, r, cookies) {
 
 /* ---------- handler ---------- */
 
-const { isAdminPhone, teacherFor } = require('./_roles');
+const { isAdminPhone } = require('./_roles');
+const { teacherRecord } = require('./_access');
+const dbmod = require('./_db');
+
+// Rate limits use the database when it is configured; without it, MiniMoth's own limits still apply.
+async function allowed(key, max, sec) {
+  try { await dbmod.ensureSchema(); return await dbmod.allow(key, max, sec); }
+  catch (e) { return true; }
+}
+const clientIp = (req) => String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
+async function teacherFor(phone) {
+  try { if (process.env.DATABASE_URL) await dbmod.ensureSchema(); return await teacherRecord(phone); }
+  catch (e) { try { return require('./_roles').teacherFor(phone); } catch (e2) { return null; } }
+}
 
 module.exports = async (req, res) => {
   const key = process.env.MINIMOTH_API_KEY;
@@ -112,7 +125,7 @@ module.exports = async (req, res) => {
     // GET /health: tells the page whether real OTP is available
     if (route === 'health' && method === 'GET') {
       const mode = !key ? null : key.startsWith('mm_test_') ? 'test' : key.startsWith('mm_live_') ? 'live' : null;
-      return respond(res, 200, { ok: true, configured: !!key && !!mode, mode, teachersConfigured: !!String(process.env.TEACHER_PHONES || '').trim() });
+      return respond(res, 200, { ok: true, configured: !!key && !!mode, mode, teachersConfigured: !!String(process.env.TEACHER_PHONES || '').trim(), databaseConfigured: !!process.env.DATABASE_URL });
     }
 
     if (!key) {
@@ -164,8 +177,17 @@ module.exports = async (req, res) => {
       const phone = normalizePhone(body.phone);
       if (!phone) return fail(res, 422, 'INVALID_PHONE', 'Invalid phone number.');
       // Teacher tab: only registered numbers get a code. Everyone else is told straight away.
-      if (body.portal === 'teacher' && !isAdminPhone(phone) && !teacherFor(phone)) {
-        if (!String(process.env.TEACHER_PHONES || '').trim()) return fail(res, 403, 'TEACHERS_NOT_CONFIGURED', 'No teacher numbers are set up on the server yet.');
+      // Abuse protection: codes per number and per network, and how often the teacher list can be probed.
+      if (!(await allowed(`otp:${phone}`, 5, 600)) || !(await allowed(`otpip:${clientIp(req)}`, 20, 600))) {
+        return fail(res, 429, 'OTP_RATE_LIMITED', 'Too many codes requested. Wait 10 minutes and try again.');
+      }
+      if (body.portal === 'teacher' && !(await allowed(`probe:${clientIp(req)}`, 10, 600))) {
+        return fail(res, 429, 'RATE_LIMITED', 'Too many attempts. Wait 10 minutes and try again.');
+      }
+      if (body.portal === 'teacher' && !isAdminPhone(phone) && !(await teacherFor(phone))) {
+        let anyTeacher = !!String(process.env.TEACHER_PHONES || '').trim();
+        if (!anyTeacher) { try { anyTeacher = (await dbmod.q('select 1 from teacher_whitelist limit 1')).length > 0; } catch (e) { /* no database */ } }
+        if (!anyTeacher) return fail(res, 403, 'TEACHERS_NOT_CONFIGURED', 'No teacher numbers are set up on the server yet.');
         return fail(res, 403, 'NOT_TEACHER', 'This number isn\'t registered for the Teacher portal.');
       }
       const r = await minimoth('/v1/otp/send', { body: { phone } });
@@ -193,7 +215,7 @@ module.exports = async (req, res) => {
           expires_at: r.data.expires_at,
           identity_id: r.data.identity_id, // absent for mm_test_ keys: normal
           admin: isAdminPhone(phone),
-          teacher: teacherFor(phone),
+          teacher: await teacherFor(phone),
         },
         [cookie(REFRESH_COOKIE, encodeURIComponent(r.data.refresh_token)), phoneCookie(phone)]
       );
@@ -221,7 +243,7 @@ module.exports = async (req, res) => {
         res,
         200,
         { ok: true, phone, access_token: r.data.access_token, expires_at: r.data.expires_at, identity_id: identityId,
-          admin: phone ? isAdminPhone(phone) : false, teacher: phone ? teacherFor(phone) : null },
+          admin: phone ? isAdminPhone(phone) : false, teacher: phone ? await teacherFor(phone) : null },
         // Both tokens rotate on every refresh: always store the new refresh token
         [cookie(REFRESH_COOKIE, encodeURIComponent(r.data.refresh_token)), ...(phone ? [phoneCookie(phone)] : [])]
       );

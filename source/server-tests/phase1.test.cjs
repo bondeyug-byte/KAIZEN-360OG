@@ -49,7 +49,7 @@ let pass = 0; const t = async (name, fn) => { try { await fn(); pass++; console.
     const n = await pg.query("select count(*)::int n from accounts where phone = '+919812341345'"); assert.equal(n.rows[0].n, 1);
     const a = await pg.query("select count(*)::int n from audit_log where action = 'account.create'"); assert.equal(a.rows[0].n, 3);
   });
-  await t('migrations are idempotent (second run is a no-op)', async () => { await db.migrate((x, p) => pg.query(x, p).then((r) => r.rows)); const m = await pg.query('select count(*)::int n from schema_migrations'); assert.equal(m.rows[0].n, 1); });
+  await t('migrations are idempotent (second run is a no-op)', async () => { await db.migrate((x, p) => pg.query(x, p).then((r) => r.rows)); const m = await pg.query('select count(*)::int n from schema_migrations'); assert.equal(m.rows[0].n, require(R + '_migrations').length); });
   await t('unknown route → 404', async () => {
     assert.equal((await call('nope', 'GET', A)).status, 404);
   });

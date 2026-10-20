@@ -11,11 +11,15 @@ export const DIVISIONS_PLACEHOLDER = true
 export const DIVISIONS = {}
 for (const y of YEARS) for (const b of BRANCHES) DIVISIONS[`${y.id}:${b.id}`] = ['A', 'B'].map((l) => `D${y.id}${b.code}${l}`)
 
-export const divisionsFor = (year, branch) => DIVISIONS[`${year}:${branch}`] || []
-export const allDivisions = () => Object.values(DIVISIONS).flat()
+// Real FE 2026-27 divisions from the college timetable (D1 = AIDS/ECS, D2 = Computer, D3 = AURO, D4 = EXTC, D5 = IT).
+// Used for real (phone-verified) accounts. Other years are not configured yet, so none are offered for them.
+// The placeholder DIVISIONS above stay for the demo accounts and their sample data.
+export const REAL_DIVISIONS = { '1:AIDS': ['D1ADA', 'D1ADB'], '1:ECS': ['D1EC'], '1:CS': ['D2A', 'D2B', 'D2C'], '1:AURO': ['D3'], '1:ENTC': ['D4A', 'D4B'], '1:IT': ['D5A', 'D5B', 'D5C'] }
+export const divisionsFor = (year, branch, real = false) => (real ? REAL_DIVISIONS : DIVISIONS)[`${year}:${branch}`] || []
+export const allDivisions = () => [...new Set([...Object.values(DIVISIONS).flat(), ...Object.values(REAL_DIVISIONS).flat()])]
 /** Parse a division id back to its year and branch (null if it isn't configured). */
 export function divisionInfo(div) {
-  for (const [k, list] of Object.entries(DIVISIONS)) if (list.includes(div)) { const [year, branch] = k.split(':'); return { year, branch, div, label: `${YEARS.find((y) => y.id === year).label} · ${BRANCHES.find((b) => b.id === branch).label} · ${div}` } }
+  for (const [k, list] of [...Object.entries(DIVISIONS), ...Object.entries(REAL_DIVISIONS)]) if (list.includes(div)) { const [year, branch] = k.split(':'); return { year, branch, div, label: `${YEARS.find((y) => y.id === year).label} · ${BRANCHES.find((b) => b.id === branch).label} · ${div}` } }
   return null
 }
 export const yearLabel = (id) => YEARS.find((y) => y.id === id)?.label || ''
@@ -23,11 +27,11 @@ export const branchLabel = (id) => BRANCHES.find((b) => b.id === id)?.label || '
 
 /** Roll numbers: letters/digits/hyphens, 2–20 chars. Unique within the same year + branch cohort. */
 export const ROLL_RE = /^[A-Za-z0-9][A-Za-z0-9-]{1,19}$/
-export function validateAcademic(p, profiles, selfId) {
+export function validateAcademic(p, profiles, selfId, real = false) {
   const e = {}
   if (!YEARS.some((y) => y.id === p.year)) e.year = 'Choose your academic year.'
   if (!BRANCHES.some((b) => b.id === p.branchId)) e.branchId = 'Choose your branch.'
-  if (!divisionsFor(p.year, p.branchId).includes(p.division)) e.division = 'Choose your division.'
+  if (!divisionsFor(p.year, p.branchId, real).includes(p.division)) e.division = real && !divisionsFor(p.year, p.branchId, true).length ? 'Only first-year divisions are set up so far.' : 'Choose your division.'
   const roll = (p.roll || '').trim()
   if (!ROLL_RE.test(roll)) e.roll = 'Enter your roll number (letters, digits or hyphens).'
   else if (Object.values(profiles || {}).some((o) => o.id !== selfId && o.year === p.year && o.branchId === p.branchId && (o.roll || '').toLowerCase() === roll.toLowerCase())) e.roll = 'That roll number is already registered in your year and branch.'

@@ -12,6 +12,7 @@ import { canAccess, roleOf, ROLE_LABEL } from '../lib/roles.js'
 export const NAV_GROUPS = [
   { label: 'Workspace', items: [
     { path: '/', label: 'Overview', icon: 'grid', keywords: 'dashboard home timetable deadlines' },
+    { path: '/portal', label: 'College portal', icon: 'library', keywords: 'my class join timetable teachers posts materials class rep requests' },
     { path: '/navigator', label: '3D Campus Explorer', icon: 'cube', keywords: 'map navigator rooms route' },
     { path: '/classwork', label: 'Classwork', icon: 'book', keywords: 'assignments notices documents lecture', student: true },
     { path: '/attendance', label: 'Attendance', icon: 'check', keywords: 'attendance percentage present absent', student: true },
@@ -33,7 +34,7 @@ export const NAV_GROUPS = [
   ] },
 ]
 export const NAV = [...NAV_GROUPS.flatMap((g) => g.items), { path: '/about', label: 'About Campus360', keywords: 'about data sources' }]
-const ADMIN_GROUP = { label: 'Admin', items: [{ path: '/admin', label: 'Admin', icon: 'lock', keywords: 'admin teachers allowlist' }, { path: '/teacher', label: 'Send to classes', icon: 'send', keywords: 'notice' }] }
+const ADMIN_GROUP = { label: 'Admin', items: [{ path: '/portal', label: 'College portal (HOD)', icon: 'library', keywords: 'hod teacher list join requests class rep timetable audit' }, { path: '/admin', label: 'Admin', icon: 'lock', keywords: 'admin teachers allowlist' }, { path: '/teacher', label: 'Send to classes', icon: 'send', keywords: 'notice' }] }
 const PERSONAL = { label: 'Personal', items: [
   { path: '/notifications', label: 'Announcements', icon: 'megaphone', keywords: 'notifications alerts', badge: 'unread' },
   { path: '/profile', label: 'My Profile', icon: 'user', keywords: 'profile account' },
@@ -43,6 +44,7 @@ const ROLE_NAV = {
   teacher: [
     { label: 'Teaching', items: [
       { path: '/', label: 'Teacher portal', icon: 'shield', keywords: 'teacher send assignment attendance classes' },
+      { path: '/portal', label: 'College portal', icon: 'library', keywords: 'college portal posts timetable schedule excel upload classes' },
       { path: '/challenges', label: 'Challenges', icon: 'trophy', keywords: 'create edit delete review solutions' },
       { path: '/notes', label: 'Notes library', icon: 'file', keywords: 'notes requests study material' },
     ] },

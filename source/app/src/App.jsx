@@ -17,6 +17,7 @@ import Assistant from './assistant/Assistant.jsx'
 import About from './pages/About.jsx'
 import Organiser from './pages/Organiser.jsx'
 import TeacherPortal from './pages/TeacherPortal.jsx'
+import Portal from './pages/Portal.jsx'
 import Classwork from './pages/Classwork.jsx'
 import AttendancePage from './pages/Attendance.jsx'
 import Canteen from './pages/Canteen.jsx'
@@ -50,7 +51,7 @@ export default function App() {
 
   // Freshly verified students with an empty profile go to onboarding first.
   useEffect(() => {
-    if (signedIn && me && !me.demo && isStudent(me) && (!hasAcademicIdentity(me) || profileCompletion(me).pct < 60) && loc.path !== '/profile') go('/profile?onboard=1')
+    if (signedIn && me && !me.demo && isStudent(me) && (!hasAcademicIdentity(me) || profileCompletion(me).pct < 60) && loc.path !== '/profile' && loc.path !== '/portal') go('/profile?onboard=1')
   }, [signedIn, me, loc.path])
 
   if (session.status === 'loading') return <div className="grid min-h-screen place-items-center"><Spinner label="Starting Campus360…" /></div>
@@ -64,7 +65,7 @@ export default function App() {
 
   const pages = {
     '/': me?.role === 'organiser' ? <Organiser query={loc.query} /> : me?.role === 'teacher' ? <TeacherPortal query={loc.query} /> : me?.role === 'admin' ? <Admin /> : <Dashboard query={loc.query} />,
-    '/teacher': <TeacherPortal query={loc.query} />, '/classwork': <Classwork query={loc.query} />, '/attendance': <AttendancePage />, '/canteen': <Canteen query={loc.query} />, '/notes': <Notes query={loc.query} />, '/admin': <Admin />, '/organiser': <Organiser query={loc.query} />, '/notifications': <NotificationsPage />, '/planner': <Planner query={loc.query} />, '/rides': <Rides query={loc.query} />, '/challenges': <Challenges query={loc.query} />, '/directory': <Directory />,
+    '/teacher': <TeacherPortal query={loc.query} />, '/portal': <Portal query={loc.query} />, '/classwork': <Classwork query={loc.query} />, '/attendance': <AttendancePage />, '/canteen': <Canteen query={loc.query} />, '/notes': <Notes query={loc.query} />, '/admin': <Admin />, '/organiser': <Organiser query={loc.query} />, '/notifications': <NotificationsPage />, '/planner': <Planner query={loc.query} />, '/rides': <Rides query={loc.query} />, '/challenges': <Challenges query={loc.query} />, '/directory': <Directory />,
     '/events': <Events query={loc.query} />, '/peer': <Peer query={loc.query} />, '/profile': <Profile query={loc.query} />, '/navigator': <NavigatorPage query={loc.query} />, '/commute': <Commute query={loc.query} />, '/about': <About />,
   }
   // Route-level permission: a page outside this role's portal is never rendered, whatever the URL says.
