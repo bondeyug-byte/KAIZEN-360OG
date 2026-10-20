@@ -14,6 +14,7 @@ import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { D, H, FLOORS, CR, AY, P2, floorPlaces, placeAt, posAt, doorAngle, floorName , LOGGIA } from './building.js'
+import { REG, atlas, plates, plateSlot, tile, quadG } from './props.js'
 import { RISE, R1, R2, TREAD, TREAD2, ENTRY, MID, stairCores, coreAt, rampHeight, landingLevel, stairMove, stairPathAt, LiftSystem, liftAllowed, liftSpecs } from './vertical.js'
 
 const ARM_LEVELS = 8, ARM_LEN = 36, ARM_W = 24
@@ -312,7 +313,7 @@ export class CampusScene {
 
     this.mats = {
       vc: addDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0, envMapIntensity: 0.45 })),
-      vcGloss: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.28, metalness: 0, envMapIntensity: 0.6 }),
+      vcGloss: new THREE.MeshStandardMaterial({ vertexColors: true, map: tile(), roughness: 0.3, metalness: 0, envMapIntensity: 0.6 }), // corridor tiles (UVs in metres)
       darkGlass: new THREE.MeshPhysicalMaterial({ color: '#1F3442', roughness: 0.05, metalness: 0.1, envMapIntensity: 1.6, clearcoat: 1, clearcoatRoughness: 0.05, emissive: '#FFC774', emissiveIntensity: 0 }),
       foliage: new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 0.82, envMapIntensity: 0.3 }),
       plain: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.8, envMapIntensity: 0.3 }),
@@ -525,11 +526,9 @@ export class CampusScene {
       if (p.type === 'lift') { if (vis) this.liftShaft(LIFTS.find((L) => L.id === p.id), y, g) }
       else if (p.type === 'stairs') { if (vis) this.stairFlights(CORES.find((c) => c.id === p.id), f, y, g) } else if (p.type === 'canteen') {
         g.push(sectorG(64.3, 87.7, 132.2, 141.8, 0.05, y, PAL.canteen))
-        for (let i = 0; i < 6; i++) { const a = 134 + Math.floor(i / 3) * 4.5, q = v3(69 + (i % 3) * 6, a, 0); desks.push(boxG(2.6, 0.75, 1.2, q.x, y + 0.4, q.z, (a + 90) * D, PAL.desk)) }
       } else {
         if (vis) g.push(sectorG(p.r1 + 0.1, p.r2 - 0.1, p.lo + 0.05, p.hi - 0.05, 0.05, y, PAL[p.type] || PAL.room))
         if (vis && (p.type === 'room' || p.type === 'lab')) furnish(p, y, desks)
-        if (vis && p.type === 'library') for (let a = p.lo + 1.2; a < p.hi - 0.6; a += 1.6) { const q = v3(83, a, 0); desks.push(boxG(0.5, 2.0, 5.5, q.x, y + 1.0, q.z, (a + 90) * D + Math.PI / 2, '#6B4B33')) }
       }
       if (p.side === 'inner' || p.side === 'outer') {
         if (p.type !== 'lobby') { addRadial(p.r1, p.r2, p.lo); addRadial(p.r1, p.r2, p.hi) }
@@ -542,7 +541,7 @@ export class CampusScene {
     }
     const grp = new THREE.Group()
     grp.add(merged([...g, ...walls, ...desks], this.mats.vc), merged(gloss, this.mats.vcGloss, { cast: false }))
-    fl.interior = grp
+    fl.interior = grp; fl.detail = null // fittings are added lazily (ensureDetail) the first time the floor is shown
     fl.group.add(grp)
     // The slab stays visible on its own (it is the gallery floor in the open terrace); the rest of the
     // interior is drawn only when you can actually see inside that floor.
@@ -551,6 +550,174 @@ export class CampusScene {
     if (this.lite) this.applyLite()
   }
 
+  /**
+   * Stage B fittings for one floor, built once on first view and merged into 3 meshes (solid props, glowing panels,
+   * decals from the shared atlas) + 1 for nameplates. Nothing here is pickable or used for navigation.
+   */
+  ensureDetail(f) {
+    const fl = this.floors[f]
+    if (!fl?.interior || fl.detail || this.layer !== 'all') return
+    if (!this.mats.decal) {
+      const names = []
+      for (let k = 0; k < FLOORS; k++) for (const p of floorPlaces(k)) if (['room', 'lab', 'office', 'library', 'wc'].includes(p.type)) names.push({ key: k + ':' + p.id, text: p.short, kind: p.type })
+      this.mats.decal = new THREE.MeshBasicMaterial({ map: atlas() })
+      this.mats.plate = new THREE.MeshBasicMaterial({ map: plates(names) })
+      this.mats.glow = new THREE.MeshBasicMaterial({ vertexColors: true })
+    }
+    const y = f * H, vc = [], glow = [], dec = [], pl = []
+    // Lite tier (weak GPUs, phones that can't hold the frame rate): keep what helps you find your way — signs,
+    // nameplates, floor numbers, lights, counters and main furniture — and drop purely decorative extras.
+    const full = !this.lite
+    const aOf = (r, s) => s / r / D
+    const ry = { out: (a) => (a + 90) * D, in: (a) => (a - 90) * D, cw: (a) => a * D, ccw: (a) => a * D + Math.PI }
+    const quad = (out, r, a, yc, w, h, face, reg) => { const q = v3(r, a, 0); out.push(quadG(w, h, q.x, y + yc, q.z, ry[face](a), reg)) }
+    const bx = (out, r, a, yc, w, h, dd, hex, turn = 0) => { const q = v3(r, a, 0); out.push(boxG(w, h, dd, q.x, y + yc, q.z, (a + 90) * D + turn, hex)) }
+    const cyl = (r, a, yc, rad, h, hex, seg = full ? 10 : 6) => { const q = v3(r, a, 0); vc.push(cylG(rad, rad, h, q.x, y + yc, q.z, hex, seg)) }
+    /** Place-local frame: d = metres in from the corridor wall, s = metres across (0 = door axis). */
+    const frame = (p) => {
+      const inner = p.side === 'inner', rD = inner ? p.r2 : p.r1, dir = inner ? -1 : 1
+      const at = (d, s) => { const r = rD + dir * d; return [r, p.am + aOf(r, s)] }
+      return {
+        W: (p.hi - p.lo) * D * p.rm, depth: p.r2 - p.r1, at,
+        box: (w, h, dd, d, s, yc, hex, out = vc) => { const [r, a] = at(d, s); bx(out, r, a, yc, w, h, dd, hex) },
+        // quad on the far wall, facing back towards the door
+        far: (s, yc, w, h, reg) => { const [r, a] = at((p.r2 - p.r1) - 0.25, s); quad(dec, r, a, yc, w, h, inner ? 'out' : 'in', reg) },
+      }
+    }
+    const walled = ['room', 'lab', 'wc', 'office', 'library']
+    const places = floorPlaces(f)
+    let outerN = 0, innerN = 0
+    for (const p of places) {
+      if (!(p.side === 'inner' || p.side === 'outer')) continue
+      const inner = p.side === 'inner', face = inner ? 'out' : 'in', rFace = inner ? 74.01 : 77.99
+      if (walled.includes(p.type)) {
+        const W = (p.hi - p.lo) * D * rFace, gap = Math.min(0.9, (p.hi - p.lo) / 3), sOff = Math.min(1.1, W / 2 - 0.4)
+        // skirting on both wall pieces beside the door
+        const rs = inner ? [73.99, 74.03] : [77.97, 78.01]
+        if (full) vc.push(sectorG(rs[0], rs[1], p.lo + 0.05, p.am - gap / 2, 0.11, y, '#3E3A36'), sectorG(rs[0], rs[1], p.am + gap / 2, p.hi - 0.05, 0.11, y, '#3E3A36'))
+        // nameplate beside the door (the door sign is on the other side)
+        const slot = plateSlot(f + ':' + p.id)
+        if (slot) quad(pl, rFace, p.am + (inner ? 1 : -1) * aOf(rFace, sOff), 1.72, 0.66, 0.15, face, slot)
+        if (p.type === 'wc') { quad(dec, rFace, p.am - (inner ? 1 : -1) * aOf(rFace, sOff), 2.05, 0.3, 0.3, face, REG.wc)
+          // water cooler next to the washroom
+          const a = p.lo + aOf(74, 0.5); bx(vc, 74.25, a, 0.5, 0.4, 1.0, 0.36, '#ECEEEF'); if (full) cyl(74.25, a, 1.16, 0.13, 0.32, '#7FB6E0')
+          this.washroom(p, frame(p), full)
+        }
+        if (!inner && (p.type === 'room' || p.type === 'lab') && outerN++ % 3 === 0) quad(dec, rFace, p.lo + aOf(rFace, 1.0), 1.55, 1.2, 0.9, face, REG.notice)
+        if (full && inner && (p.type === 'room' || p.type === 'lab')) quad(dec, rFace, p.hi - aOf(rFace, 0.95), 1.7, 0.9, 0.6, face, REG['art' + (1 + (innerN++ % 3))])
+        // window light on the floor of window-side rooms (a cheap baked patch, not a real light)
+        if (full && !inner && p.type !== 'wc') vc.push(sectorG(85.7, 87.6, p.lo + 0.25, p.hi - 0.25, 0.012, y + 0.05, '#F7E7D9'))
+      }
+    }
+    // corridor ceiling: bulkheads above the corridor walls and a row of light panels
+    const aEnd = f === 0 ? 132 : 132
+    vc.push(sectorG(73.82, 73.98, 48, aEnd, H - 0.25 - 3.4, y + 3.4, PAL.wall), sectorG(78.02, 78.18, 48, 132, H - 0.25 - 3.4, y + 3.4, PAL.wall))
+    for (let a = 49.5; a <= (f === 0 ? 137 : 130.5); a += 2.4) bx(glow, 76, a, H - 0.29, 1.1, 0.04, 0.34, '#FFF4DC')
+    // stairs: exit signs and fire extinguishers on the opposite wall (clear of doors)
+    for (const c of CORES) {
+      quad(dec, 74.02, c.mid, 2.85, 0.62, 0.31, 'out', REG.exit)
+      const op = places.find((p) => p.side === 'outer' && c.mid >= p.lo && c.mid <= p.hi)
+      let a = c.mid; if (op && walled.includes(op.type) && Math.abs(a - op.am) < 1.2) a = op.am + (a > op.am ? 1.2 : -1.2)
+      cyl(77.82, a, 0.32, 0.09, 0.56, '#C62828'); if (full) cyl(77.82, a, 0.66, 0.035, 0.12, '#222222', 6)
+    }
+    // lift lobbies: floor-number plate on the free jamb
+    for (const L of LIFTS) { const jamb = (L.hi - L.lo) * 0.15; quad(dec, L.door + (L.inner ? 0.12 : -0.12), L.lo + jamb / 2, 1.62, 0.26, 0.26, L.inner ? 'out' : 'in', REG['d' + f]) }
+    if (f === 0) this.groundFloor(places, frame, { vc, glow, dec, quad, bx, cyl, y, full })
+    if (f === 1) { const lib = places.find((p) => p.id === 'library'); if (lib) this.library(lib, frame(lib), { vc, glow, dec, quad, bx, full }) }
+    const grp = new THREE.Group()
+    if (vc.length) grp.add(merged(vc, this.mats.vc, { cast: false }))
+    if (glow.length) grp.add(merged(glow, this.mats.glow, { cast: false, receive: false }))
+    if (dec.length) grp.add(merged(dec, this.mats.decal, { cast: false, receive: false }))
+    if (pl.length) grp.add(merged(pl, this.mats.plate, { cast: false, receive: false }))
+    fl.detail = grp; fl.detailFull = full; fl.interior.add(grp)
+    if (this.lite) this.applyLite()
+    this.shadowDirty = true
+  }
+  /** Washroom: tiled dado, three cubicles on the back wall, a basin counter with a mirror on a side wall. */
+  washroom(p, F, full = true) {
+    const { W, depth, box } = F, back = depth - 0.12
+    box(W - 0.3, 1.2, 0.03, back, 0, 0.6, '#C9D8D6')                                   // back-wall dado
+    for (const s of [-W / 2 + 0.06, W / 2 - 0.06]) box(0.03, 1.2, depth - 0.3, depth / 2, s, 0.6, '#C9D8D6')
+    const cw = (W - 0.3) / 3, front = back - 2.0
+    for (let k = 1; k < 3; k++) box(0.04, 1.9, 2.0, back - 1.0, -W / 2 + 0.15 + k * cw, 1.0, '#8FA9B3') // partitions
+    for (let k = 0; k < 3; k++) { const s = -W / 2 + 0.15 + (k + 0.5) * cw; box(cw - 0.8, 1.9, 0.04, front, s - 0.38, 1.0, '#8FA9B3'); if (full) box(0.4, 0.42, 0.6, back - 0.4, s, 0.21, '#F4F4F2') }
+    box(0.55, 0.86, 2.2, 2.9, W / 2 - 0.36, 0.43, '#D9D4CB')                           // basin counter
+    if (full) for (const d of [2.3, 3.5]) box(0.36, 0.08, 0.42, d, W / 2 - 0.36, 0.9, '#FFFFFF')
+    box(0.03, 0.85, 2.1, 2.9, W / 2 - 0.08, 1.65, '#9DB4C0')                           // mirror
+  }
+  /** Ground floor: lobby, canteen, principal's office, administrative office, examination department. */
+  groundFloor(places, frame, K) {
+    const { vc, glow, dec, quad, bx, cyl, full } = K
+    // Lobby (courtyard entrance at r = 64, corridor at r = 74; the straight path at 88.5°–91.5° stays clear)
+    vc.push(sectorG(69.6, 70.4, 92.6, 95.2, 1.05, 0, PAL.desk), sectorG(69.5, 70.5, 92.5, 95.3, 0.05, 1.05, '#E8DCCB')) // reception desk
+    quad(dec, 70.0, 93.9, 2.35, 1.8, 0.45, 'in', REG.reception)
+    bx(vc, 66.3, 86.6, 0.53, 1.6, 1.05, 0.6, '#6E6458')                                // security counter
+    bx(vc, 67.6, 95.76, 1.05, 0.06, 2.1, 2.6, '#5C4434'); bx(vc, 67.6, 95.5, 0.15, 0.5, 0.3, 2.6, '#5C4434'); bx(vc, 67.6, 95.5, 2.05, 0.5, 0.1, 2.6, '#5C4434') // trophy cabinet against the side wall
+    for (const yy of [0.75, 1.25, 1.75]) bx(vc, 67.6, 95.5, yy, 0.46, 0.03, 2.4, '#D6C7A6')
+    if (full) for (let i = 0; i < 6; i++) { const r = 66.7 + (i % 3) * 0.9, a = 95.45; cyl(r, a, yy(i), 0.08, 0.22, '#D4A73A', 8) }
+    function yy(i) { return 0.88 + Math.floor(i / 3) * 0.5 }
+    for (const r of [71.0, 72.4]) for (let a = 84.8; a <= 87.2; a += 0.8) { bx(vc, r, a, 0.23, 0.55, 0.45, 0.5, '#4F5D6B'); bx(vc, r + 0.24, a, 0.65, 0.55, 0.45, 0.06, '#4F5D6B') } // waiting seats
+    // Canteen (west annex, a 132–142): counter on the end wall, menu boards, tables in rows, tray return
+    vc.push(sectorG(67, 85, 140.2, 141.0, 1.0, 0, '#9C8466'), sectorG(67, 85, 140.15, 141.05, 0.04, 1.0, '#E7E2D8'), sectorG(67, 85, 140.18, 140.24, 0.45, 1.04, '#CFE3EA'))
+    vc.push(sectorG(64.3, 87.7, 141.75, 141.95, 3.4, 0, PAL.wall))                     // kitchen wall behind the counter
+    for (const r of [70, 76, 82]) quad(dec, r, 141.72, 2.55, 2.0, 1.0, 'cw', REG.menu)
+    for (const r of [67.6, 71.2, 80.6, 84.2]) for (const a of [133.8, 135.9, 138.0]) {
+      bx(vc, r, a, 0.38, 1.7, 0.76, 0.8, '#C8B08A')
+      if (full) for (const dr of [-0.62, 0.62]) for (const s of [-0.45, 0.45]) bx(vc, r + dr, a + s / r / D, 0.23, 0.4, 0.45, 0.4, '#8E3B2E')
+      else for (const dr of [-0.62, 0.62]) bx(vc, r + dr, a, 0.23, 1.3, 0.45, 0.4, '#8E3B2E') // one bench per side
+    }
+    bx(vc, 86.7, 133.0, 0.7, 1.2, 1.4, 0.5, '#7D7D78')                                 // tray-return stand
+    // Offices on the courtyard side
+    for (const p of places) {
+      if (p.type !== 'office') continue
+      const F = frame(p), { W, depth, box } = F
+      if (p.id === 'r15') { // principal
+        box(W - 1.6, 0.012, 3.6, 7.0, 0, 0.056, '#7A2E3B')                              // rug
+        box(2.1, 0.76, 0.95, 7.1, 0, 0.38, '#5A3B26'); box(0.7, 1.1, 0.6, 8.1, 0, 0.55, '#2C2C2C') // desk, chair
+        for (const s of [-0.65, 0.65]) box(0.55, 0.85, 0.55, 5.9, s, 0.42, '#6E5A48')  // visitor chairs
+        box(0.85, 0.8, 2.1, 3.2, W / 2 - 0.6, 0.4, '#5E4B3E')                           // sofa
+        box(W - 2.6, 2.0, 0.4, depth - 0.3, 0, 1.0, '#6B4B33')                          // bookcase
+        for (const s of [-W / 2 + 0.7, W / 2 - 0.7]) { const [r, a] = F.at(depth - 0.9, s); cyl(r, a, 1.1, 0.025, 2.2, '#B9A27A', 6)
+          for (const [k, c] of [[0, '#E4802B'], [1, '#F5F5F0'], [2, '#2E7D32']]) bx(vc, r, a + 0.35 / r / D, 1.95 - k * 0.18, 0.62, 0.18, 0.02, c) }
+        F.far(0, 2.45, 1.7, 0.32, REG.principal)
+      } else if (p.id === 'r16') { // administrative office
+        box(W - 2.2, 1.05, 0.6, 3.0, -0.6, 0.52, '#8C7A64'); box(W - 2.0, 0.04, 0.75, 3.0, -0.6, 1.07, '#E3D9C8') // service counter
+        for (const [d, s] of [[5.2, -1.6], [5.2, 1.6], [7.0, -1.6], [7.0, 1.6]]) { box(1.4, 0.75, 0.7, d, s, 0.37, PAL.desk); box(0.5, 0.36, 0.05, d + 0.2, s, 0.95, '#1E2228') }
+        for (let k = 0; k < 6; k++) box(0.5, 1.32, 0.6, depth - 0.35, -W / 2 + 0.6 + k * 0.6, 0.66, '#9AA3AA') // filing cabinets
+        F.far(0.9, 2.45, 1.7, 0.32, REG.admin)
+      } else if (p.id === 'r17') { // examination department
+        box(2.4, 0.95, 0.7, 3.0, -0.9, 0.47, '#8C7A64')                                 // work counter
+        for (const d of [5.4, 6.9, 8.4]) { box(W - 2.0, 2.1, 0.42, d, -0.4, 1.05, '#8A949A'); for (const yy of [0.3, 0.8, 1.3, 1.8]) box(W - 2.2, 0.28, 0.46, d, -0.4, yy, yy > 1 ? '#D9C9A3' : '#C7B48A') } // document racks
+        for (let d = 2.2; d <= 4.2; d += 1.0) box(0.6, 1.9, 0.9, d, W / 2 - 0.4, 0.95, '#9AA3AA') // storage cabinets
+        F.far(0, 2.6, 1.7, 0.32, REG.exam)
+      }
+    }
+  }
+  /** Floor 1 library: shelf rows with book spines, reading tables with lamps, issue counter, catalogue PCs, window seats. */
+  library(p, F, K) {
+    const { glow, dec, full } = K, { W, box, at } = F
+    box(2.6, 1.05, 0.7, 2.4, 2.4, 0.52, '#6B4B33'); box(2.7, 0.04, 0.8, 2.4, 2.4, 1.06, '#D8C3A0') // issue / return counter
+    box(1.8, 0.74, 0.7, 2.4, -2.4, 0.37, PAL.desk)                                       // catalogue table
+    for (const s of [-2.85, -1.95]) { box(0.5, 0.36, 0.05, 2.5, s, 0.95, '#1E2228'); const [r, a] = at(2.47, s); quad(r, a, 0.95, 0.44, 0.3, p) }
+    function quad(r, a, yc, w, h) { const q = v3(r, a, 0); dec.push(quadG(w, h, q.x, (p.f * H) + yc, q.z, (a - 90) * D, REG.screen)) }
+    const shelfS = []
+    for (let s = -W / 2 + 1.3; s <= W / 2 - 1.3; s += 1.9) if (Math.abs(s) > 1.4) shelfS.push(s)
+    shelfS.forEach((s, i) => {
+      box(0.5, 2.0, 2.8, 5.0, s, 1.0, '#6B4B33')
+      const [r, a] = at(5.0, s), q = v3(r, a, 0), yb = p.f * H
+      for (const side of [-1, 1]) for (const yc of full ? [0.45, 0.95, 1.45] : [0.95]) {
+        const off = side * 0.26 / r / D, qq = v3(r, a + off, 0)
+        dec.push(quadG(2.7, full ? 0.42 : 1.4, qq.x, yb + yc, qq.z, side < 0 ? a * D : a * D + Math.PI, (i + yc * 2) % 2 < 1 ? REG.books1 : REG.books2))
+      }
+      void q
+    })
+    for (let s = -W / 2 + 1.6; s <= W / 2 - 1.6; s += 3.1) {                           // reading tables + lamps
+      box(1.6, 0.75, 0.9, 7.6, s, 0.37, '#A47C55')
+      if (full) for (const dd of [-0.65, 0.65]) for (const ss of [-0.4, 0.4]) box(0.42, 0.45, 0.42, 7.6 + dd, s + ss, 0.22, '#55606B')
+      box(0.04, 0.3, 0.04, 7.6, s, 0.9, '#3A3A3A'); box(0.26, 0.08, 0.2, 7.6, s, 1.08, '#FFE3A6', glow)
+    }
+    for (let s = -W / 2 + 1.0; s <= W / 2 - 1.0; s += 2.2) box(1.8, 0.45, 0.5, 9.45, s, 0.22, '#7A5A3E') // window seats
+  }
   /** Switchback stair for storey f → f+1: floor landing, flight 1 (lane A, inwards), mid-landing,
    *  flight 2 (lane B, back to the door line), central wall, and guard rails where a lane leads nowhere. */
   stairFlights(c, f, y, g) {
@@ -773,6 +940,10 @@ export class CampusScene {
       else if (m === 'walk') { fl.group.visible = i <= cf + 1; fl.outer.visible = fl.inner.visible = i <= cf; fl.top.visible = i < cf }
       else { fl.group.visible = i <= cf; fl.outer.visible = true; fl.inner.visible = i < cf; fl.top.visible = i < cf }
       if (fl.interior) fl.interior.visible = campus ? false : m === 'walk' ? i === cf || i === cf + 1 || (!!this.walk.zone && i === cf - 1) : i === cf
+      // fittings: current floor always; on the Lite tier only the floor you are on (saves draw calls on weak GPUs)
+      const wantDetail = !!fl.interior?.visible && (!this.lite || i === cf)
+      if (wantDetail) this.ensureDetail(i)
+      if (fl.detail) fl.detail.visible = wantDetail
       if (fl.labels) fl.labels.visible = !campus && i === cf
       fl.heat.visible = this.heat && !campus && i === cf
     })
@@ -829,7 +1000,13 @@ export class CampusScene {
    * Lite tier for low-end devices: cheap Lambert lighting instead of physically based materials (and no
    * procedural detail shader), no shadows, lighter trees. Same model, same colours and textures.
    */
-  setLite(on) { if (!!this.lite === !!on) return; this.lite = !!on; this.applyLite(); this.sun.castShadow = !on && this.quality !== 'saver' && this.quality !== 'lite'; if (this.crowns) this.crowns.geometry = on ? this.crownLite : this.crownFull; this.shadowDirty = true; this.invalidate(); this.emit('tier', this.tier()) }
+  setLite(on) { if (!!this.lite === !!on) return; this.lite = !!on; this.resetDetail(); this.applyLite(); this.sun.castShadow = !on && this.quality !== 'saver' && this.quality !== 'lite'; if (this.crowns) this.crowns.geometry = on ? this.crownLite : this.crownFull; this.shadowDirty = true; this.invalidate(); this.emit('tier', this.tier()) }
+  /** Drop built fittings whose detail level no longer matches the tier; visible floors rebuild on the next view. */
+  resetDetail() {
+    let any = false
+    for (const fl of this.floors) if (fl.detail && fl.detailFull !== !this.lite) { fl.interior.remove(fl.detail); fl.detail.traverse((o) => o.geometry?.dispose()); fl.detail = null; any = true }
+    if (any && this.liftList) this.applyVisibility()
+  }
   applyLite() {
     const map = (this._liteMap = this._liteMap || new Map())
     this.scene.traverse((o) => {
