@@ -20,7 +20,9 @@ module.exports = async (req, res) => {
       data jsonb not null, updated_at timestamptz not null default now(),
       primary key (col, id))`);
     const who = await access.resolve(phone);
-    const staff = !!(who.admin || who.teacher);
+    // Roles v2: who.base is 'hod' | 'teacher' | 'student' (api/_access.js). HOD keeps the old admin powers here.
+    const isHod = who.base === 'hod';
+    const staff = isHod || who.base === 'teacher';
     const me = String(who.account.id);
 
     if (req.method === 'GET') {
@@ -44,7 +46,7 @@ module.exports = async (req, res) => {
         const json = valid ? JSON.stringify(data) : '';
         if (!valid || json.length > MAX_ITEM || (isTeacherCol && !staff)) { rejected++; continue; }
         // Who may overwrite an existing item: its owner, the HOD, or staff for student items (reviewing submissions).
-        const mayEdit = !!who.admin || (staff && isStudentCol);
+        const mayEdit = isHod || (staff && isStudentCol);
         const out = await db.q(
           `insert into shared_items (col, id, owner, data) values ($1, $2, $3, $4::jsonb)
            on conflict (col, id) do update set data = excluded.data, updated_at = now()

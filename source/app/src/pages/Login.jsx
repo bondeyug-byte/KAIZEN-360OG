@@ -8,8 +8,8 @@ import * as auth from '../lib/auth.js'
 import { CLASS_LABEL } from '../data/config.js'
 import { demoIdsFor, TRUSTED_DEMO, ROLE_LABEL } from '../lib/roles.js'
 
-const PORTALS = [['student', 'Student'], ['teacher', 'Teacher'], ['organiser', 'Council / Club']]
-const roleFromHash = () => { const r = new URLSearchParams((window.location.hash.split('?')[1]) || '').get('role'); return ['student', 'teacher', 'organiser', 'admin'].includes(r) ? r : 'student' }
+const PORTALS = [['student', 'Student'], ['teacher', 'Teacher'], ['hod', 'HOD'], ['organiser', 'Council / Club']]
+const roleFromHash = () => { const r = new URLSearchParams((window.location.hash.split('?')[1]) || '').get('role'); return ['student', 'teacher', 'hod', 'organiser', 'admin'].includes(r) ? r : 'student' }
 
 export default function Login({ next = '/' }) {
   const { server, completeOtpLogin, demoLogin, session, db, pushToast } = useApp()
@@ -45,7 +45,7 @@ export default function Login({ next = '/' }) {
     if (!p) { setError('Enter a 10-digit Indian mobile number starting with 6–9.'); return }
     setBusy(true)
     try {
-      const r = await auth.sendOtp(p, portal === 'teacher' ? 'teacher' : undefined)
+      const r = await auth.sendOtp(p, portal === 'teacher' || portal === 'hod' ? portal : undefined)
       const t = Date.now(); setTick(t)
       setSentTo({ phone: r.phone || p, expiresAt: r.expires_at, otpId: r.otp_id, sentAt: t }); setDelivery(null)
       setStep('code'); setCode('')
@@ -60,9 +60,8 @@ export default function Login({ next = '/' }) {
     try {
       const r = await auth.verifyOtp(sentTo.phone, code)
       completeOtpLogin(r)
-      const isTeacher = !!r.teacher?.teaches?.length || (db.shared.staffAllowlist || []).some((x) => x.active !== false && String(x.phone).replace(/\D/g, '').slice(-10) === String(r.phone).replace(/\D/g, '').slice(-10))
-      if (portal === 'teacher' && !isTeacher && !r.admin) pushToast('This number isn’t on the teacher list yet, so you’re signed in as a student. Ask the admin to add it (TEACHER_PHONES on the server).', 'warn')
-      window.location.hash = next
+      // The server decides the role; each role lands on its own portal.
+      window.location.hash = r.role === 'hod' ? '/hod' : r.role === 'teacher' ? '/' : next
     } catch (err) {
       setError(err.message)
       if (['OTP_NOT_FOUND', 'VERIFY_RATE_LIMITED'].includes(err.code)) setStep('phone')
@@ -86,7 +85,7 @@ export default function Login({ next = '/' }) {
           <h2 className="font-display text-[30px] font-semibold">Sign in · {ROLE_LABEL[portal]} portal</h2>
           <p className="mt-1 text-muted">{portal === 'organiser' ? 'Council and club desks use a demo account in this build.' : 'Verify your phone number with a one-time code, or use a demo account.'}</p>
         </div>
-        <div role="tablist" aria-label="Choose your portal" className="grid grid-cols-3 gap-1 rounded-xl bg-sand p-1">
+        <div role="tablist" aria-label="Choose your portal" className="grid grid-cols-2 gap-1 rounded-xl bg-sand p-1 sm:grid-cols-4">
           {PORTALS.map(([r, l]) => <button key={r} role="tab" aria-selected={portal === r} onClick={() => { setPortal(r); history.replaceState(null, '', `#/login?role=${r}`) }} className={cx('press min-h-[42px] rounded-lg px-2 text-[13.5px] font-semibold', portal === r ? 'bg-surface text-ink shadow-card' : 'text-muted hover:text-ink')}>{l}</button>)}
         </div>
         {session.message && <p role="alert" className="rounded-xl bg-[#FBEDEA] px-3 py-2 text-sm text-bad">{session.message}</p>}
@@ -125,9 +124,10 @@ export default function Login({ next = '/' }) {
               </div>
             </form>
           )}
-          <p className="mt-3 text-xs text-muted">{portal === 'teacher' ? 'Only phone numbers registered by the admin can open the Teacher portal. ' : ''}OTP confirms you control this phone number. It does not confirm college enrolment.</p>
+          <p className="mt-3 text-xs text-muted">{portal === 'teacher' ? 'Only numbers your HOD has added can open the Teacher portal. ' : portal === 'hod' ? 'Only the number registered for your branch can open the HOD portal. ' : ''}OTP confirms you control this phone number. It does not confirm college enrolment.</p>
         </div>}
 
+        {portal !== 'hod' && (
         <div className="rounded-xl border border-dashed border-[#C9B6DA] bg-[#F7F2FB] p-5">
           <div className="mb-1 flex items-center gap-2"><b className="text-[15px]">Demo sign-in · {ROLE_LABEL[portal]}</b><Badge tone="demo">Simulated · no OTP</Badge></div>
           <p className="mb-3 text-sm text-muted">Fictional sample accounts for presentations. Each account’s role is fixed by the app, not by anything you can edit; permissions are checked inside the app only and need a server in production.</p>
@@ -144,6 +144,7 @@ export default function Login({ next = '/' }) {
             })}
           </div>
         </div>
+        )}
         <p className="text-[12.5px] text-muted">College admin? <a href="#/login?role=admin" className="font-semibold text-maroon">Admin demo account</a></p>
         <p className="text-sm text-muted">Just looking? <a href="#/navigator" className="font-semibold text-maroon">Open the 3D campus</a>, <a href="#/directory" className="font-semibold text-maroon">the directory</a> or <a href="#/events" className="font-semibold text-maroon">events</a> without signing in.</p>
       </section>

@@ -1,5 +1,29 @@
 # Campus360 college portal — architecture and handover
 
+
+## 0. Roles v2 (October 2026) — read this first
+| Role | How someone gets it | Where they work |
+|---|---|---|
+| **HOD** | Only through the server setting `HOD_PHONES` (`98xxxxxxxx=CMPN;97xxxxxxxx=AIDS` — one HOD per branch). Copied into `hod_assignments` on every server start; numbers removed from the setting lose HOD access. | Separate **HOD portal** (`/hod`, "HOD" tab on the login page) |
+| **Teacher** | The HOD adds the number in HOD portal → Teachers and assigns divisions. (`TEACHER_PHONES` is copied in once, then remove it.) | Teacher portal |
+| **Class rep (CR)** | A student asks ("Request CR role") and the division's teacher or the HOD approves, or the HOD assigns directly. Max 2 per division. | Student login → College portal → **CR Tools** |
+| **Student** | Anyone else. Joins one division by request; a teacher of that division, its CR or the branch HOD approves (first decision wins). Max 65 per division. | College portal |
+
+Precedence when a number fits several roles: **HOD > teacher > student**. A teacher or HOD number cannot join a class.
+All rules are in ONE function, `can(user, action, resource)` in `api/_policy.js`; every route calls it; it is unit-tested.
+Roles are re-read from the database on every request, so removing a teacher or CR takes effect on their next action.
+`ADMIN_PHONES` is no longer used.
+
+Settings (table `settings`): `division_capacity` = 65, `max_crs_per_division` = 2. Change with SQL in the Neon console, e.g.
+`update settings set value = '70' where key = 'division_capacity';`
+
+Timetables: one loader (`src/lib/timetable.js`) feeds the Overview widget, College portal → Timetable and the assistant.
+Students see a new publish the next time they open the app, switch back to the tab (after 60 s) or refresh — not instant push.
+A teacher uploading a file with other divisions must choose "Check only my divisions"; skipped divisions are listed.
+
+Not built: academic-year rollover (the schema keeps `year_id` on enrollments and an `archived` status for it),
+SE/TE/BE divisions (add rows to `academic_years` and `divisions`), push/SMS notifications, a super-admin.
+
 ## 1. In one minute (for the HOD)
 Students, teachers and the HOD sign in with their phone number and a one-time code (MiniMoth).
 The server identifies them from a signed cookie and looks up their role in the college database (Neon Postgres):
@@ -31,8 +55,8 @@ object storage before uploads become large.
 |---|---|---|
 | `MINIMOTH_API_KEY` | Phone codes; also signs the login cookie | Yes |
 | `DATABASE_URL` | Neon connection | Yes |
-| `ADMIN_PHONES` | HOD numbers, comma-separated (e.g. `9876543210`) | Private |
-| `TEACHER_PHONES` | Optional; teachers can instead be added by the HOD in the app | Private |
+| `HOD_PHONES` | HOD per branch: `98xxxxxxxx=CMPN;97xxxxxxxx=AIDS` | Private |
+| `TEACHER_PHONES` | Optional, copied into the database once; then remove it | Private |
 | `GEMINI_API_KEY` | AI assistant (optional) | Yes |
 
 After changing a setting, redeploy. `/api/auth/health` reports `configured`, `teachersConfigured`, `databaseConfigured`.

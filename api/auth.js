@@ -57,14 +57,7 @@ function readPhone(req) {
 }
 
 // Accepts 9876543210, 919876543210, +919876543210 (spaces and hyphens ignored).
-function normalizePhone(input) {
-  if (typeof input !== 'string') return null;
-  const s = input.replace(/[\s\-()]/g, '');
-  if (/^[6-9]\d{9}$/.test(s)) return `+91${s}`;
-  if (/^91[6-9]\d{9}$/.test(s)) return `+${s}`;
-  if (/^\+91[6-9]\d{9}$/.test(s)) return s;
-  return null;
-}
+const { normalizePhone } = require('./_roles'); // one shared rule for every phone format
 
 async function minimoth(path, { method = 'POST', body } = {}) {
   const r = await fetch(`${API_BASE}${path}`, {
@@ -99,8 +92,7 @@ function upstreamError(res, r, cookies) {
 
 /* ---------- handler ---------- */
 
-const { isAdminPhone } = require('./_roles');
-const { teacherRecord } = require('./_access');
+const { signInRole } = require('./_access');
 const dbmod = require('./_db');
 
 // Rate limits use the database when it is configured; without it, MiniMoth's own limits still apply.
@@ -109,9 +101,11 @@ async function allowed(key, max, sec) {
   catch (e) { return true; }
 }
 const clientIp = (req) => String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
-async function teacherFor(phone) {
-  try { if (process.env.DATABASE_URL) await dbmod.ensureSchema(); return await teacherRecord(phone); }
-  catch (e) { try { return require('./_roles').teacherFor(phone); } catch (e2) { return null; } }
+const roleSummary = async (phone) => { const r = await roleFor(phone); return { role: r.base, hod: r.hod, teacher: r.teacher, admin: false }; };
+/** Role for sign-in: HOD (HOD_PHONES) outranks teacher (HOD's teacher list) outranks student. Never fails sign-in. */
+async function roleFor(phone) {
+  try { return await signInRole(phone); }
+  catch (e) { return { base: 'student', hod: null, teacher: null, unavailable: true }; }
 }
 
 module.exports = async (req, res) => {
@@ -125,7 +119,7 @@ module.exports = async (req, res) => {
     // GET /health: tells the page whether real OTP is available
     if (route === 'health' && method === 'GET') {
       const mode = !key ? null : key.startsWith('mm_test_') ? 'test' : key.startsWith('mm_live_') ? 'live' : null;
-      return respond(res, 200, { ok: true, configured: !!key && !!mode, mode, teachersConfigured: !!String(process.env.TEACHER_PHONES || '').trim(), databaseConfigured: !!process.env.DATABASE_URL });
+      return respond(res, 200, { ok: true, configured: !!key && !!mode, mode, teachersConfigured: !!String(process.env.TEACHER_PHONES || '').trim(), hodsConfigured: !!String(process.env.HOD_PHONES || '').trim(), databaseConfigured: !!process.env.DATABASE_URL });
     }
 
     if (!key) {
@@ -181,14 +175,19 @@ module.exports = async (req, res) => {
       if (!(await allowed(`otp:${phone}`, 5, 600)) || !(await allowed(`otpip:${clientIp(req)}`, 20, 600))) {
         return fail(res, 429, 'OTP_RATE_LIMITED', 'Too many codes requested. Wait 10 minutes and try again.');
       }
-      if (body.portal === 'teacher' && !(await allowed(`probe:${clientIp(req)}`, 10, 600))) {
+      if ((body.portal === 'teacher' || body.portal === 'hod') && !(await allowed(`probe:${clientIp(req)}`, 10, 600))) {
         return fail(res, 429, 'RATE_LIMITED', 'Too many attempts. Wait 10 minutes and try again.');
       }
-      if (body.portal === 'teacher' && !isAdminPhone(phone) && !(await teacherFor(phone))) {
-        let anyTeacher = !!String(process.env.TEACHER_PHONES || '').trim();
-        if (!anyTeacher) { try { anyTeacher = (await dbmod.q('select 1 from teacher_whitelist limit 1')).length > 0; } catch (e) { /* no database */ } }
-        if (!anyTeacher) return fail(res, 403, 'TEACHERS_NOT_CONFIGURED', 'No teacher numbers are set up on the server yet.');
-        return fail(res, 403, 'NOT_TEACHER', 'This number isn\'t registered for the Teacher portal.');
+      // Teacher and HOD tabs: only registered numbers get a code. Everyone else is told straight away.
+      if (body.portal === 'teacher' || body.portal === 'hod') {
+        const role = await roleFor(phone);
+        if (body.portal === 'hod' && role.base !== 'hod') return fail(res, 403, 'NOT_HOD', 'This number isn\'t registered as an HOD.');
+        if (body.portal === 'teacher' && role.base === 'student') {
+          let anyTeacher = false;
+          try { anyTeacher = (await dbmod.q('select 1 from teacher_whitelist where active limit 1')).length > 0; } catch (e) { /* no database */ }
+          if (!anyTeacher) return fail(res, 403, 'TEACHERS_NOT_CONFIGURED', 'No teacher numbers are set up yet. The HOD adds them in the HOD portal.');
+          return fail(res, 403, 'NOT_TEACHER', 'This number isn\'t registered for the Teacher portal.');
+        }
       }
       const r = await minimoth('/v1/otp/send', { body: { phone } });
       if (!r.ok) return upstreamError(res, r);
@@ -214,8 +213,7 @@ module.exports = async (req, res) => {
           access_token: r.data.access_token,
           expires_at: r.data.expires_at,
           identity_id: r.data.identity_id, // absent for mm_test_ keys: normal
-          admin: isAdminPhone(phone),
-          teacher: await teacherFor(phone),
+          ...(await roleSummary(phone)),
         },
         [cookie(REFRESH_COOKIE, encodeURIComponent(r.data.refresh_token)), phoneCookie(phone)]
       );
@@ -243,7 +241,7 @@ module.exports = async (req, res) => {
         res,
         200,
         { ok: true, phone, access_token: r.data.access_token, expires_at: r.data.expires_at, identity_id: identityId,
-          admin: phone ? isAdminPhone(phone) : false, teacher: phone ? await teacherFor(phone) : null },
+          ...(phone ? await roleSummary(phone) : { role: 'student', hod: null, teacher: null, admin: false }) },
         // Both tokens rotate on every refresh: always store the new refresh token
         [cookie(REFRESH_COOKIE, encodeURIComponent(r.data.refresh_token)), ...(phone ? [phoneCookie(phone)] : [])]
       );

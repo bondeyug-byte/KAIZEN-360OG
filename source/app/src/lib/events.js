@@ -209,7 +209,7 @@ export function sendEventMessage(state, { eventId, studentId, text }, actor, now
   if (isOrganiserOf(actor, ev)) {
     if (!studentId || !messagesIn(state, eventId, studentId).length) return fail(state, 'Choose a conversation to reply to.')
     thread = studentId; fromRole = 'organiser'
-  } else if (actor?.id && !['teacher', 'admin', 'organiser'].includes(actor.role) && !actor.system) {
+  } else if (actor?.id && !['teacher', 'admin', 'organiser', 'hod'].includes(actor.role) && !actor.system) {
     thread = actor.id; fromRole = 'student' // a student can only ever write in their own thread
   } else return fail(state, 'Only this event’s organisers and students can use this chat.')
   const last = messagesIn(state, eventId, thread).filter((m) => m.fromId === actor.id).pop()

@@ -7,8 +7,8 @@
 // enforce the same rules on the server; client-side checks are not security on their own.
 import { makeSeed, DEMO_USERS } from '../data/seed.js'
 
-export const ROLES = ['student', 'teacher', 'organiser', 'admin']
-export const ROLE_LABEL = { student: 'Student', teacher: 'Teacher', organiser: 'Council / Club', admin: 'Admin' }
+export const ROLES = ['student', 'teacher', 'organiser', 'admin', 'hod']
+export const ROLE_LABEL = { student: 'Student', teacher: 'Teacher', organiser: 'Council / Club', admin: 'Admin', hod: 'HOD' }
 
 /** App-controlled demo accounts: role and class assignments are fixed in code, never read from storage. */
 const seed = makeSeed(new Date('2026-01-01T00:00:00Z'))
@@ -19,14 +19,16 @@ export const TRUSTED_DEMO = Object.freeze(Object.fromEntries(DEMO_USERS.map((id)
 export const demoIdsFor = (role) => DEMO_USERS.filter((id) => TRUSTED_DEMO[id].role === role)
 
 /** Normalised role of a (trusted, already-derived) user object. Anything unknown is a student. */
-export const roleOf = (u) => (u && ['teacher', 'organiser', 'admin'].includes(u.role) ? u.role : 'student')
+export const roleOf = (u) => (u && ['teacher', 'organiser', 'admin', 'hod'].includes(u.role) ? u.role : 'student')
 
 /** Routes each role may open. Admin keeps oversight of everything. */
 const ACCESS = {
   student: ['/', '/portal', '/navigator', '/classwork', '/attendance', '/planner', '/events', '/commute', '/canteen', '/rides', '/challenges', '/peer', '/notes', '/directory', '/notifications', '/profile', '/about'],
-  teacher: ['/', '/portal', '/teacher', '/challenges', '/notes', '/navigator', '/commute', '/canteen', '/notifications', '/profile', '/about'],
+  teacher: ['/', '/teacher', '/challenges', '/notes', '/navigator', '/commute', '/canteen', '/notifications', '/profile', '/about'],
   organiser: ['/', '/organiser', '/events', '/notifications', '/profile', '/about'],
-  admin: ['/', '/portal', '/admin', '/teacher', '/navigator', '/classwork', '/attendance', '/planner', '/events', '/commute', '/canteen', '/rides', '/challenges', '/peer', '/notes', '/directory', '/notifications', '/profile', '/about'],
+  // HOD: separate portal, no classroom screens (no own timetable, classes or attendance).
+  hod: ['/', '/hod', '/navigator', '/commute', '/canteen', '/notifications', '/profile', '/about'],
+  admin: ['/', '/admin', '/teacher', '/navigator', '/classwork', '/attendance', '/planner', '/events', '/commute', '/canteen', '/rides', '/challenges', '/peer', '/notes', '/directory', '/notifications', '/profile', '/about'],
 }
 export const canAccess = (user, path) => ACCESS[roleOf(user)].includes(path)
 export const routesFor = (user) => ACCESS[roleOf(user)]

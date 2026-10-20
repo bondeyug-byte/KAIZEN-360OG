@@ -38,6 +38,8 @@ function toContents(messages) {
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ code: 'method' });
+  // Gemini costs money: only signed-in users may use it (others get the built-in offline assistant).
+  if (!require('../_session').getPhone(req)) return res.status(401).json({ code: 'NO_SESSION' });
 
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!key) return res.status(503).json({ code: 'no_key' });

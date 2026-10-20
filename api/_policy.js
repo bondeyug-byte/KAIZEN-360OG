@@ -1,0 +1,62 @@
+// The ONE place that decides who may do what. Every API route calls can(); nothing else checks roles.
+//
+// `who` is built on the server from the verified phone + database (api/_access.js), never from the request:
+//   base           'hod' | 'teacher' | 'student'   (HOD outranks teacher, teacher outranks student)
+//   hodBranches    branches this HOD heads (from HOD_PHONES → hod_assignments)
+//   teacher        { divisions: [codes], canPublishTimetable } for active whitelisted teachers
+//   crDivisions    divisions where this student is an active class representative
+//   enrollment     { division_code, year_id } — the student's active class, or null
+//   divisions      Map(code → { code, branch_code, year_id })
+//
+// Resources: { division: 'D2A' } or { branch: 'CMPN' }.
+
+function can(who, action, res = {}) {
+  if (!who || !who.account) return false;
+  const d = res.division !== undefined ? who.divisions.get(res.division) : null;
+  if (res.division !== undefined && !d) return false; // unknown division → nobody may act on it
+  const branch = d ? d.branch_code : res.branch;
+
+  const isHod = who.base === 'hod';
+  const isTeacher = who.base === 'teacher';
+  const isStudent = who.base === 'student';
+  const hodOf = (b) => isHod && !!b && who.hodBranches.includes(b);
+  const teaches = (code) => isTeacher && who.teacher.divisions.includes(code);
+  const enrolledIn = (code) => isStudent && !!who.enrollment && who.enrollment.division_code === code;
+  const crOf = (code) => enrolledIn(code) && who.crDivisions.includes(code); // a CR must still be in the class
+
+  switch (action) {
+    // joining a class
+    case 'join.request': return isStudent;
+    case 'join.view':
+    case 'join.decide': return hodOf(branch) || teaches(d && d.code) || crOf(d && d.code);
+    case 'join.override':
+    case 'enrollment.revoke': return hodOf(branch);
+    // class representatives
+    case 'cr.request': return enrolledIn(d && d.code) && !who.crDivisions.includes(d.code);
+    case 'cr.decide': return hodOf(branch) || teaches(d && d.code);
+    case 'cr.assign':
+    case 'cr.remove': return hodOf(branch);
+    case 'roster.view': return hodOf(branch) || teaches(d && d.code) || crOf(d && d.code);
+    // content
+    case 'post.create': return hodOf(branch) || teaches(d && d.code); // announcements, materials, files
+    case 'notice.create':
+    case 'reminder.create': return hodOf(branch) || teaches(d && d.code) || crOf(d && d.code);
+    case 'content.view': return hodOf(branch) || teaches(d && d.code) || enrolledIn(d && d.code);
+    // timetables
+    case 'timetable.upload': return isHod || (isTeacher && who.teacher.canPublishTimetable);
+    case 'timetable.publish': return hodOf(branch) || (teaches(d && d.code) && who.teacher.canPublishTimetable);
+    // HOD tools
+    case 'teacher.manage':
+    case 'teacher.assign':
+    case 'instruction.send':
+    case 'audit.view': return hodOf(branch);
+    case 'hod.portal': return isHod;
+    case 'instruction.receive': return isTeacher;
+    default: return false;
+  }
+}
+
+/** Division codes (among all known) for which `action` is allowed. */
+const allowedDivisions = (who, action) => [...who.divisions.keys()].filter((code) => can(who, action, { division: code }));
+
+module.exports = { can, allowedDivisions };

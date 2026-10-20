@@ -7,6 +7,8 @@ import { TRUSTED_DEMO } from '../lib/roles.js'
 import { notify, deadlineNotifications, markRead, markAllRead } from '../lib/notifications.js'
 
 const Ctx = createContext(null)
+/** Role fields from a server response (/api/app/me or /api/auth/*). The browser never decides these. */
+const rolesFrom = (r) => ({ role: r.role || 'student', hod: r.hod || null, teacher: r.teacher || null, admin: false, ...(r.cr ? { cr: r.cr } : {}), ...('enrollment' in r ? { enrollment: r.enrollment, joinRequest: r.joinRequest, crRequest: r.crRequest, counts: r.counts } : {}) })
 export const useApp = () => useContext(Ctx)
 
 export function AppProvider({ children }) {
@@ -60,7 +62,7 @@ export function AppProvider({ children }) {
     refreshTimer.current = setTimeout(async () => {
       try {
         const r = await auth.restoreSession()
-        setSession((s) => ({ ...s, accessToken: r.access_token, expiresAt: r.expires_at, admin: !!r.admin, teacher: r.teacher || null }))
+        setSession((s) => ({ ...s, accessToken: r.access_token, expiresAt: r.expires_at, ...rolesFrom(r) }))
         scheduleRefresh(r.expires_at)
       } catch (e) {
         // A failed silent refresh ends the session: back to sign-in with a clear message.
@@ -96,7 +98,7 @@ export function AppProvider({ children }) {
       setDb(next)
       const snap = JSON.stringify({ profile: syncableProfile(next.profiles[uid]), data: next.userData[uid] })
       acct.current = { ...acct.current, version: r.version, lastSent: migrated ? null : snap }
-      setSession((s) => (s.mode === 'minimoth' ? { ...s, userId: uid, cloud: true, admin: s.admin || !!r.admin, teacher: s.teacher || r.teacher || null } : s))
+      setSession((s) => (s.mode === 'minimoth' ? { ...s, userId: uid, cloud: true, ...rolesFrom(r) } : s))
       setSync({ status: 'synced', at: new Date() })
       if (migrated) pushToast('Your profile from this browser was copied to your account. It now syncs across devices.')
     } catch (e) {
@@ -121,7 +123,7 @@ export function AppProvider({ children }) {
           const r = await auth.restoreSession()
           if (cancelled) return
           const uid = ensureProfileForIdentity(r.identity_id || r.phone, r.phone, !!r.admin)
-          setSession({ status: 'signedIn', mode: 'minimoth', userId: uid, accessToken: r.access_token, expiresAt: r.expires_at, phone: r.phone, admin: !!r.admin, teacher: r.teacher || null, message: null })
+          setSession({ status: 'signedIn', mode: 'minimoth', userId: uid, accessToken: r.access_token, expiresAt: r.expires_at, phone: r.phone, ...rolesFrom(r), message: null })
           scheduleRefresh(r.expires_at)
           attachAccount(r.phone)
           return
@@ -138,7 +140,7 @@ export function AppProvider({ children }) {
   const completeOtpLogin = useCallback((r) => {
     const uid = ensureProfileForIdentity(r.identity_id || r.phone, r.phone, !!r.admin)
     if (r.teacher?.name) setDb((d) => (d.profiles[uid] && !d.profiles[uid].name ? { ...d, profiles: { ...d.profiles, [uid]: { ...d.profiles[uid], name: r.teacher.name } } } : d))
-    setSession({ status: 'signedIn', mode: 'minimoth', userId: uid, accessToken: r.access_token, expiresAt: r.expires_at, phone: r.phone, admin: !!r.admin, teacher: r.teacher || null, message: null })
+    setSession({ status: 'signedIn', mode: 'minimoth', userId: uid, accessToken: r.access_token, expiresAt: r.expires_at, phone: r.phone, ...rolesFrom(r), message: null })
     scheduleRefresh(r.expires_at)
     attachAccount(r.phone)
     return uid
@@ -183,12 +185,16 @@ export function AppProvider({ children }) {
     const digits = (x) => String(x || '').replace(/\D/g, '').slice(-10)
     const staff = (db.shared.staffAllowlist || []).find((x) => x.active !== false && x.phone && session.phone && digits(x.phone) === digits(session.phone))
     if (p.classRep) p = { ...p, classRep: false } // class rep is assigned by the app, never by a profile edit
-    if (session.admin) return p.role === 'admin' ? p : { ...p, role: 'admin' }
-    // Teacher: from the server's TEACHER_PHONES (works on every device) or the admin's staff list in this browser.
-    if (session.teacher?.teaches?.length) return { ...p, role: 'teacher', teaches: session.teacher.teaches, name: p.name || session.teacher.name || p.name }
+    // Phone accounts: the role comes from the server (HOD outranks teacher, teacher outranks student).
+    if (session.hod) return { ...p, role: 'hod', hodBranches: session.hod.branches, teaches: undefined }
+    if (session.teacher) return { ...p, role: 'teacher', teaches: session.teacher.teaches || [], name: p.name || session.teacher.name || p.name }
+    if (session.cloud) {
+      const e = session.enrollment
+      return { ...(p.role ? { ...p, role: undefined, teaches: undefined } : p), cr: session.cr || [], enrollment: e || null, ...(e ? { division: e.division_code } : {}) }
+    }
     if (staff) return { ...p, role: 'teacher', teaches: staff.teaches }
     return p.role === 'admin' || p.role === 'teacher' || p.role === 'organiser' ? { ...p, role: undefined, teaches: undefined } : p
-  }, [db.profiles, db.shared.staffAllowlist, session.userId, session.mode, session.phone, session.admin, session.teacher])
+  }, [db.profiles, db.shared.staffAllowlist, session.userId, session.mode, session.phone, session.admin, session.teacher, session.hod, session.cloud, session.cr, session.enrollment])
   const myData = session.userId ? db.userData[session.userId] : null
 
   /** Apply a pure shared-state transition from src/lib/*. Returns the result. */
@@ -232,7 +238,10 @@ export function AppProvider({ children }) {
     if (!uid || acct.current.saving || acct.current.timer) return
     try {
       const r = await loadAccount()
-      if (r.version === acct.current.version || `acc_${r.account.id}` !== uid) return
+      if (`acc_${r.account.id}` !== uid) return
+      // Roles can change at any time (teacher removed, class rep appointed or removed): always take the server's view.
+      setSession((s) => (s.mode === 'minimoth' && s.userId === uid ? { ...s, ...rolesFrom(r) } : s))
+      if (r.version === acct.current.version) return
       const { db: next } = adoptAccount(dbRef.current, r, session.phone, emptyUserData)
       acct.current = { ...acct.current, version: r.version, lastSent: JSON.stringify({ profile: syncableProfile(next.profiles[uid]), data: next.userData[uid] }) }
       setDb(next)
@@ -281,7 +290,13 @@ export function AppProvider({ children }) {
   const markNotificationsRead = useCallback((ids) => { if (session.userId) setDb((d) => ({ ...d, shared: markRead(d.shared, session.userId, ids) })) }, [session.userId, setDb])
   const markAllNotificationsRead = useCallback(() => { if (session.userId) setDb((d) => ({ ...d, shared: markAllRead(d.shared, session.userId) })) }, [session.userId, setDb])
 
+  /** Re-read roles/enrollment from the server now (after joining, approvals, CR changes). */
+  const refreshAccount = useCallback(async () => {
+    if (!session.cloud) return
+    try { const r = await loadAccount(); setSession((s) => (s.mode === 'minimoth' ? { ...s, ...rolesFrom(r) } : s)) } catch { /* next focus will retry */ }
+  }, [session.cloud])
   const value = {
+    refreshAccount,
     db, setDb, now, toasts, pushToast, session, server, me, myData, sync,
     completeOtpLogin, demoLogin, signOut, resetDemo, runShared, updateMyData, updateProfile, markNotificationsRead, markAllNotificationsRead,
     signedIn: session.status === 'signedIn',
@@ -291,7 +306,7 @@ export function AppProvider({ children }) {
 
 export function profileCompletion(p) {
   if (!p) return { pct: 0, missing: [] }
-  if (['teacher', 'admin', 'organiser'].includes(p.role)) return { pct: p.name?.trim() ? 100 : 50, missing: p.name?.trim() ? [] : ['name'] }
+  if (['teacher', 'admin', 'organiser', 'hod'].includes(p.role)) return { pct: p.name?.trim() ? 100 : 50, missing: p.name?.trim() ? [] : ['name'] }
   const checks = [['name', !!p.name?.trim()], ['year, branch and division', !!(p.year && p.branchId && p.division)], ['roll number', !!p.roll], ['interests', (p.interests || []).length > 0], ['subjects', (p.subjects || []).length > 0]]
   const missing = checks.filter(([, ok]) => !ok).map(([k]) => k)
   return { pct: Math.round(((checks.length - missing.length) / checks.length) * 100), missing }

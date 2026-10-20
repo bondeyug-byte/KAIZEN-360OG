@@ -5,7 +5,7 @@ import Icon from '../components/Icon.jsx'
 import AudiencePicker from '../components/AudiencePicker.jsx'
 import { FilePicker, ResourceViewer, ReviewList, TeacherChallenges } from './Challenges.jsx'
 import AttendanceDesk from './AttendanceDesk.jsx'
-import { TimetableSchedule } from './Portal.jsx'
+import { TimetableSchedule, JoinRequests, CrRequests, InstructionsInbox, Composer as CloudComposer, MyPosts as CloudPosts, ReminderForm, Reminders, Roster, StaffTimetable } from '../components/CloudPortal.jsx'
 import { KIND, STATUS, SUBST, createPost, updatePost, setPostStatus, sentBy, subsFor, reviewAssignment, allowedDivisions, recipients, isAdmin } from '../lib/posts.js'
 import { postChallenge, setChallengeStatus, submissionsFor, SUB } from '../lib/challenges.js'
 import { putFile, deleteFile, fmtSize } from '../lib/files.js'
@@ -23,6 +23,39 @@ const STATUS_TONE = { [STATUS.OPEN]: 'ok', [STATUS.CLOSED]: 'warn', [STATUS.ARCH
  * Browser-only storage in this build — see README "Multi-user delivery".
  */
 export default function TeacherPortal({ query = {} }) {
+  const { me, session } = useApp()
+  // Phone-verified teachers work on the college server; demo teachers keep the browser-only sample portal below.
+  if (session.mode === 'minimoth' && session.cloud && me?.role === 'teacher') return <CloudTeacher query={query} />
+  return <DemoTeacherPortal query={query} />
+}
+
+function CloudTeacher({ query }) {
+  const { session } = useApp()
+  const t = session.teacher || {}
+  const c = session.counts || {}
+  const divisions = t.divisions || [...new Set((t.teaches || []).map((x) => x.division))]
+  const tabs = [['joins', `Join requests${c.pendingJoins ? ` (${c.pendingJoins})` : ''}`], ['cr', `CR requests${c.pendingCr ? ` (${c.pendingCr})` : ''}`], ['instructions', `Instructions from HOD${c.openInstructions ? ` (${c.openInstructions})` : ''}`],
+    ['send', 'Send to classes'], ['sent', 'Sent'], ['reminder', 'Reminders'], ...(t.canPublishTimetable ? [['timetable', 'Timetable Schedule']] : []), ['tt', 'View timetables'], ['roster', 'Class lists']]
+  const [tab, setTab] = useState(tabs.some((x) => x[0] === query.tab) ? query.tab : 'joins')
+  useEffect(() => { if (query.tab) setTab(query.tab) }, [query.tab])
+  return (
+    <div>
+      <PageHeader title="Teacher portal" subtitle={divisions.length ? `Your divisions: ${divisions.join(', ')}. Everything here is saved on the college server and checked there.` : 'You have no divisions yet. Ask your HOD to assign them.'} />
+      <div className="mb-4 overflow-x-auto"><Segmented label="Teacher section" value={tab} onChange={setTab} options={tabs.map(([value, label]) => ({ value, label }))} /></div>
+      {tab === 'joins' && (divisions.length ? <JoinRequests /> : <Empty icon="user" title="No divisions assigned">Join requests appear here once your HOD assigns your divisions.</Empty>)}
+      {tab === 'cr' && (divisions.length ? <CrRequests /> : <Empty icon="user" title="No divisions assigned">Ask your HOD to assign your divisions.</Empty>)}
+      {tab === 'instructions' && <InstructionsInbox />}
+      {tab === 'send' && <CloudComposer />}
+      {tab === 'sent' && <CloudPosts />}
+      {tab === 'reminder' && (divisions.length ? <div className="grid gap-4 xl:grid-cols-2"><ReminderForm divisions={divisions} /><Reminders division={divisions[0]} /></div> : <Empty icon="user" title="No divisions assigned">Ask your HOD to assign your divisions.</Empty>)}
+      {tab === 'timetable' && <TimetableSchedule />}
+      {tab === 'tt' && <StaffTimetable />}
+      {tab === 'roster' && <Roster />}
+    </div>
+  )
+}
+
+function DemoTeacherPortal({ query = {} }) {
   const { me } = useApp()
   const [tab, setTab] = useState(query.tab || 'overview')
   useEffect(() => { if (query.tab) setTab(query.tab) }, [query.tab, query.kind])
@@ -37,7 +70,7 @@ export default function TeacherPortal({ query = {} }) {
       {tab === 'sent' && <Sent />}
       {tab === 'subs' && <Submissions initial={query.id} />}
       {tab === 'attendance' && <AttendanceDesk />}
-      {tab === 'timetable' && <TimetableTab />}
+      {tab === 'timetable' && <Empty icon="lock" title="Sign in with your phone to publish timetables">Timetables are stored on the college server, so this needs a teacher number registered by your HOD. Demo accounts can’t publish.</Empty>}
     </div>
   )
 }
@@ -261,10 +294,3 @@ function Submissions({ initial }) {
   )
 }
 
-/** Teacher portal → Timetable Schedule: the Excel importer (stored on the college server, so phone sign-in only). */
-function TimetableTab() {
-  const { session } = useApp()
-  if (session.mode !== 'minimoth' || !session.cloud) return <Empty icon="lock" title="Sign in with your phone to publish timetables">Timetables are stored on the college server and checked there, so this needs a teacher number registered by the HOD. Demo accounts can’t publish.</Empty>
-  if (!session.teacher && !session.admin) return <Empty icon="lock" title="Not allowed">Only registered teachers and the HOD can publish timetables.</Empty>
-  return <TimetableSchedule />
-}

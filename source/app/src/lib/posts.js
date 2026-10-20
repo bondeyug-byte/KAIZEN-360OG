@@ -12,7 +12,7 @@ const fail = (state, error, errors) => ({ ok: false, state, error, errors })
 
 export const isTeacher = (u) => u?.role === 'teacher'
 export const isAdmin = (u) => u?.role === 'admin'
-export const isStudent = (u) => !!u && !u.system && !['teacher', 'admin', 'organiser'].includes(u.role)
+export const isStudent = (u) => !!u && !u.system && !['teacher', 'admin', 'organiser', 'hod'].includes(u.role)
 /** Divisions this staff member may send to: a teacher's own classes; an admin may send anywhere. */
 export const allowedDivisions = (u) => (isAdmin(u) ? allDivisions() : isTeacher(u) ? [...new Set((u.teaches || []).map((t) => t.division))] : [])
 

@@ -1,7 +1,8 @@
 // Roles from server settings. Shared by api/auth.js and api/app.js; never sent to the browser as a list.
 function normalizePhone(input) {
   if (typeof input !== 'string') return null;
-  const s = input.replace(/[\s\-()]/g, '');
+  const s = input.replace(/[\s\-().]/g, '');
+  if (/^0[6-9]\d{9}$/.test(s)) return `+91${s.slice(1)}`; // leading trunk 0
   if (/^[6-9]\d{9}$/.test(s)) return `+91${s}`;
   if (/^91[6-9]\d{9}$/.test(s)) return `+${s}`;
   if (/^\+91[6-9]\d{9}$/.test(s)) return s;
@@ -35,4 +36,17 @@ function teacherFor(phone) {
 }
 
 
-module.exports = { normalizePhone, isAdminPhone, teacherFor, DIVISION_RE };
+// HOD_PHONES=9876543210=CMPN;9123456789=AIDS   (one HOD per branch; a number may head more than one branch)
+function hodEntries(env = process.env) {
+  const out = [];
+  for (const raw of String(env.HOD_PHONES || '').split(/[;\n]/)) {
+    const i = raw.indexOf('=');
+    if (i < 0) continue;
+    const phone = normalizePhone(raw.slice(0, i).trim());
+    const branch = raw.slice(i + 1).trim().toUpperCase();
+    if (phone && /^[A-Z]{2,6}$/.test(branch)) out.push({ phone, branch });
+  }
+  return out;
+}
+
+module.exports = { normalizePhone, isAdminPhone, teacherFor, hodEntries, DIVISION_RE };

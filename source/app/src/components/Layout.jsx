@@ -34,17 +34,25 @@ export const NAV_GROUPS = [
   ] },
 ]
 export const NAV = [...NAV_GROUPS.flatMap((g) => g.items), { path: '/about', label: 'About Campus360', keywords: 'about data sources' }]
-const ADMIN_GROUP = { label: 'Admin', items: [{ path: '/portal', label: 'College portal (HOD)', icon: 'library', keywords: 'hod teacher list join requests class rep timetable audit' }, { path: '/admin', label: 'Admin', icon: 'lock', keywords: 'admin teachers allowlist' }, { path: '/teacher', label: 'Send to classes', icon: 'send', keywords: 'notice' }] }
+const ADMIN_GROUP = { label: 'Admin', items: [{ path: '/admin', label: 'Admin', icon: 'lock', keywords: 'admin teachers allowlist' }, { path: '/teacher', label: 'Send to classes', icon: 'send', keywords: 'notice' }] }
 const PERSONAL = { label: 'Personal', items: [
   { path: '/notifications', label: 'Announcements', icon: 'megaphone', keywords: 'notifications alerts', badge: 'unread' },
   { path: '/profile', label: 'My Profile', icon: 'user', keywords: 'profile account' },
 ] }
 /** Each role gets its own navigation; the route guard in App.jsx enforces the same lists. */
 const ROLE_NAV = {
+  hod: [
+    { label: 'Department', items: [{ path: '/', label: 'HOD portal', icon: 'shield', keywords: 'hod teachers instructions join requests class reps audit send' }] },
+    { label: 'Campus', items: [
+      { path: '/navigator', label: '3D Campus Explorer', icon: 'cube', keywords: 'map navigator rooms route' },
+      { path: '/commute', label: 'Trains & buses', icon: 'train', keywords: 'commute local train bus journey' },
+      { path: '/canteen', label: 'Canteens', icon: 'cup', keywords: 'canteen food menu price' },
+    ] },
+    { label: 'Personal', items: [{ path: '/profile', label: 'My Profile', icon: 'user', keywords: 'profile account' }] },
+  ],
   teacher: [
     { label: 'Teaching', items: [
       { path: '/', label: 'Teacher portal', icon: 'shield', keywords: 'teacher send assignment attendance classes' },
-      { path: '/portal', label: 'College portal', icon: 'library', keywords: 'college portal posts timetable schedule excel upload classes' },
       { path: '/challenges', label: 'Challenges', icon: 'trophy', keywords: 'create edit delete review solutions' },
       { path: '/notes', label: 'Notes library', icon: 'file', keywords: 'notes requests study material' },
     ] },
@@ -64,6 +72,7 @@ const ROLE_NAV = {
   ],
 }
 const MOBILE_BY_ROLE = {
+  hod: [{ path: '/', label: 'HOD', icon: 'shield' }, { path: '/navigator', label: '3D map', icon: 'cube' }, { path: '/profile', label: 'Profile', icon: 'user' }],
   student: [{ path: '/', label: 'Home', icon: 'grid' }, { path: '/planner', label: 'Academics', icon: 'book' }, { path: '/navigator', label: '3D map', icon: 'cube' }, { path: '/commute', label: 'Trains', icon: 'train' }],
   teacher: [{ path: '/', label: 'Portal', icon: 'shield' }, { path: '/challenges', label: 'Challenges', icon: 'trophy' }, { path: '/notes', label: 'Notes', icon: 'file' }, { path: '/navigator', label: '3D map', icon: 'cube' }],
   organiser: [{ path: '/', label: 'Desk', icon: 'shield' }, { path: '/events', label: 'Events', icon: 'calendar' }, { path: '/notifications', label: 'Alerts', icon: 'megaphone' }, { path: '/profile', label: 'Profile', icon: 'user' }],

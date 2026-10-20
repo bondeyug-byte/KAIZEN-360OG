@@ -5,7 +5,8 @@ import { Card, CardTitle, Badge, Button, Empty, relTime, cx, AnimatedNumber, Dia
 import { uid } from '../lib/ids.js'
 import { nextTrains } from '../lib/transit.js'
 import Icon from '../components/Icon.jsx'
-import { timetableForClass } from '../data/seed.js'
+import { useMyTimetable } from '../lib/timetable.js'
+import { Reminders } from '../components/CloudPortal.jsx'
 import { place, floorName } from '../navigator/building.js'
 import { prefs } from '../lib/storage.js'
 import { checkTarget, marksTable, RESULT } from '../lib/academic.js'
@@ -28,34 +29,25 @@ export function campusNow(now) {
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: CAMPUS_TIMEZONE, weekday: 'long', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(now)
   return { wd: DAYS.indexOf(parts.find((p) => p.type === 'weekday').value), mins: (Number(parts.find((p) => p.type === 'hour').value) % 24) * 60 + Number(parts.find((p) => p.type === 'minute').value) }
 }
-/** One weekday's classes only (day: 0 = Sunday … 6 = Saturday), in time order. Live status only when that day is today. */
-export function classesForDay(classId, day, now) {
+/** One weekday's classes only (day: 0 = Sunday … 6 = Saturday), in time order. Live status only when that day is today.
+ *  `tt` is the list from useMyTimetable() — the same data as College portal → Timetable. */
+export function classesForDay(tt, day, now) {
   const { wd, mins } = campusNow(now)
-  return timetableForClass(classId).filter((t) => t.day === day).sort((a, b) => toMin(a.start) - toMin(b.start))
+  return (tt || []).filter((t) => t.day === day).sort((a, b) => toMin(a.start) - toMin(b.start))
     .map((t) => ({ ...t, status: day !== wd ? 'later' : toMin(t.end) <= mins ? 'done' : toMin(t.start) <= mins ? 'now' : 'later' }))
 }
 
-export function todaysClasses(classId, now) {
-  const tt = timetableForClass(classId)
-  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: CAMPUS_TIMEZONE, weekday: 'long', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(now)
-  const wd = DAYS.indexOf(parts.find((p) => p.type === 'weekday').value)
-  const mins = Number(parts.find((p) => p.type === 'hour').value) * 60 + Number(parts.find((p) => p.type === 'minute').value)
-  let day = wd, label = 'Today'
-  let list = tt.filter((t) => t.day === wd)
-  if (!list.length) { for (let k = 1; k <= 7; k++) { const d = (wd + k) % 7; const l = tt.filter((t) => t.day === d); if (l.length) { list = l; day = d; label = DAYS[d]; break } } }
-  return { label, isToday: day === wd, items: list.sort((a, b) => toMin(a.start) - toMin(b.start)).map((t) => ({ ...t, status: day !== wd ? 'later' : toMin(t.end) <= mins ? 'done' : toMin(t.start) <= mins ? 'now' : 'later' })) }
-}
 
 /** The next lecture after now (today's remaining first, then following days), with a readable room label. */
-export function nextClass(classId, now) {
-  if (!classId) return null
+export function nextClass(tt, now) {
+  if (!tt || !tt.length) return null
   const { wd, mins } = campusNow(now)
   for (let k = 0; k <= 7; k++) {
     const d = (wd + k) % 7
-    const list = timetableForClass(classId).filter((t) => t.day === d && (k > 0 || toMin(t.start) > mins)).sort((a, b) => toMin(a.start) - toMin(b.start))
+    const list = tt.filter((t) => t.day === d && (k > 0 || toMin(t.start) > mins)).sort((a, b) => toMin(a.start) - toMin(b.start))
     if (list.length) {
-      const t = list[0]; const p = place(t.place.f, t.place.id)
-      return { ...t, dayLabel: k === 0 ? 'Today' : k === 1 ? 'Tomorrow' : DAYS[d].slice(0, 3), dayIndex: d, room: p ? `${p.short || p.name}, ${floorName(t.place.f)}` : floorName(t.place.f) }
+      const t = list[0]; const p = t.place ? place(t.place.f, t.place.id) : null
+      return { ...t, dayLabel: k === 0 ? 'Today' : k === 1 ? 'Tomorrow' : DAYS[d].slice(0, 3), dayIndex: d, room: p ? `${p.short || p.name}, ${floorName(t.place.f)}` : t.place ? floorName(t.place.f) : t.room ? `Room ${t.room}` : 'Room not given' }
     }
   }
   return null
@@ -63,6 +55,7 @@ export function nextClass(classId, now) {
 
 export default function Dashboard({ query = {} }) {
   const { db, me, myData, now, session, updateMyData, pushToast } = useApp()
+  const my = useMyTimetable() // one source for the timetable widget and the cards (same as College portal → Timetable)
   const [editDl, setEditDl] = useState(null)
   useEffect(() => { if (!query.dl) return; const t = setTimeout(() => { const el = document.getElementById('dl-' + query.dl); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash') } }, 150); return () => clearTimeout(t) }, [query.dl])
   const sh = db.shared
@@ -126,11 +119,12 @@ export default function Dashboard({ query = {} }) {
         </a>
       )}
 
-      <OverviewCards me={me} myData={myData} now={now} />
+      <OverviewCards me={me} myData={myData} now={now} my={my} />
       <StudyStrip me={me} now={now} />
 
+      {session.cloud && session.enrollment && <Reminders compact />}
       <div className="grid gap-5 lg:grid-cols-[1.45fr_1fr]">
-        <WeekTimetable classId={me.classId} now={now} />
+        <WeekTimetable my={my} now={now} />
         <Bulletin />
       </div>
 
@@ -213,19 +207,20 @@ export default function Dashboard({ query = {} }) {
 }
 
 const KIND = { lab: ['Laboratory', 'bg-[#FBF0DC] text-[#8A5A0E] ring-[#EBD3A6]'], room: ['Classroom', 'bg-[#E7F0FB] text-[#1F4F8A] ring-[#C7DAF2]'] }
-function WeekTimetable({ classId, now }) {
+function WeekTimetable({ my, now }) {
+  const tt = my.entries
+  const label = my.status === 'demo' ? (CLASS_LABEL[my.division] || my.division) : my.division
   const { wd } = campusNow(now)
   // Opens on today, or on the next day with classes when today is free. A day picked today is remembered for today.
   const todayKey = new Intl.DateTimeFormat('en-CA', { timeZone: CAMPUS_TIMEZONE }).format(now)
   const [day, setDayState] = useState(() => {
     const saved = prefs.get('ttDay2', null)
     if (saved && saved.date === todayKey && WEEK.includes(saved.d)) return saved.d
-    if (!classId) return wd
-    for (let k = 0; k < 7; k++) { const d = (wd + k) % 7; if (timetableForClass(classId).some((t) => t.day === d)) return d }
+    for (let k = 0; k < 7; k++) { const d = (wd + k) % 7; if (tt.some((t) => t.day === d)) return d }
     return wd
   })
   const setDay = (d) => { setDayState(d); prefs.set('ttDay2', { d, date: todayKey }) }
-  const items = useMemo(() => (classId ? classesForDay(classId, day, now) : []), [classId, day, now])
+  const items = useMemo(() => classesForDay(tt, day, now), [tt, day, now])
   const onKey = (e) => {
     const i = WEEK.indexOf(day), n = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : null
     if (n === null) return
@@ -233,7 +228,7 @@ function WeekTimetable({ classId, now }) {
   }
   return (
     <Card className="fade-in">
-      <CardTitle eyebrow={classId ? `${CLASS_LABEL[classId] || classId} · weekly timetable` : 'Weekly timetable'} action={<a href="#/navigator" className="text-[13px] font-semibold text-maroon hover:underline">Open 3D map</a>}>Lectures & labs</CardTitle>
+      <CardTitle eyebrow={label ? `${label}${my.term && my.status !== 'demo' ? ` · ${my.term}` : ''} · weekly timetable` : 'Weekly timetable'} action={<a href="#/navigator" className="text-[13px] font-semibold text-maroon hover:underline">Open 3D map</a>}>Lectures & labs</CardTitle>
       <div role="tablist" aria-label="Day of the week" onKeyDown={onKey} className="-mx-1 mb-3 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
         {WEEK.map((d) => (
           <button key={d} data-day={d} role="tab" aria-selected={day === d} tabIndex={day === d ? 0 : -1} onClick={() => setDay(d)}
@@ -244,11 +239,12 @@ function WeekTimetable({ classId, now }) {
         ))}
       </div>
       <div role="tabpanel" aria-label={`${DAYS[day]} timetable`}>
-        {!classId ? <Empty icon="calendar" title="No timetable yet">Set your class in your <a href="#/profile" className="font-semibold text-maroon">profile</a> to see your lectures.</Empty>
+        {my.status === 'loading' ? <p className="py-6 text-center text-[13.5px] text-muted">Loading your timetable…</p>
+          : !tt.length ? <Empty icon="calendar" title={my.status === 'empty' && my.division ? `No timetable for ${my.division} yet` : 'No timetable yet'}>{my.message || 'Nothing to show.'}{my.status !== 'demo' && !my.division && <> <a href="#/portal" className="font-semibold text-maroon">Join your class</a>.</>}</Empty>
           : items.length ? (
             <ol key={day} className="stagger relative flex flex-col divide-y divide-line">
               {items.map((t, i) => {
-                const p = place(t.place.f, t.place.id), kind = KIND[p?.type]
+                const p = t.place ? place(t.place.f, t.place.id) : null, kind = KIND[p?.type]
                 const now_ = t.status === 'now', done = t.status === 'done'
                 return (
                   <li key={t.id} className={cx('relative flex items-center gap-3 rounded-lg py-2.5 pl-2 pr-2', now_ && 'bg-maroon-50 ring-1 ring-maroon/15', done && 'opacity-55')}>
@@ -259,7 +255,8 @@ function WeekTimetable({ classId, now }) {
                       <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">
                         <Badge>{t.type}</Badge>
                         {kind && <span className={cx('inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold ring-1', kind[1])}>{kind[0]}</span>}
-                        <span className="rounded-md bg-ground px-1.5 py-0.5 text-[11.5px] font-semibold text-[#33443B]">{p ? p.short : 'Room not mapped'} · {floorName(t.place.f)}</span>
+                        <span className="rounded-md bg-ground px-1.5 py-0.5 text-[11.5px] font-semibold text-[#33443B]">{t.place ? `${p ? p.short : 'Room not mapped'} · ${floorName(t.place.f)}` : t.room ? `Room ${t.room}` : 'Room not given'}</span>
+                        {t.batch && <Badge tone="info">Batch {t.batch}</Badge>}{t.teacher && <span>{t.teacher}</span>}
                       </span>
                     </span>
                     {now_ && <Badge tone="maroon">Now</Badge>}
@@ -300,18 +297,18 @@ function DeadlineForm({ d, onSave, onCancel }) {
 }
 
 /* ---------- reference-style overview pieces (all from real data) ---------- */
-function OverviewCards({ me, myData, now }) {
+function OverviewCards({ me, myData, now, my }) {
   const { db, session } = useApp()
   const { wd, mins } = campusNow(now)
-  const today = me.classId ? classesForDay(me.classId, wd, now) : []
-  const upcoming = nextClass(me.classId, now)
+  const today = classesForDay(my.entries, wd, now)
+  const upcoming = nextClass(my.entries, now)
   const open = (myData?.deadlines || []).filter((d) => !d.done)
   const soon = open.filter((d) => Date.parse(d.due) - now < 36 * 3600000).length
   const evs = db.shared.events.filter((e) => eventStatus(e, now) !== EVENT_STATUS.ENDED)
   const week = evs.filter((e) => Date.parse(e.start) - now < 7 * 86400000).length
   const unread = unreadCount(db.shared, session.userId)
   const cards = [
-    { n: today.length, label: 'Classes today', tag: today.length ? 'Today' : 'Free day', foot: upcoming ? `Next class: ${upcoming.dayLabel} ${upcoming.start} · ${upcoming.title} · ${upcoming.room}` : 'Nothing in your timetable', href: upcoming ? navHref(upcoming.place) : '#/', icon: 'calendar' },
+    { n: today.length, label: 'Classes today', tag: today.length ? 'Today' : 'Free day', foot: upcoming ? `Next class: ${upcoming.dayLabel} ${upcoming.start} · ${upcoming.title} · ${upcoming.room}` : 'Nothing in your timetable', href: upcoming?.place ? navHref(upcoming.place) : my.status === 'demo' ? '#/' : '#/portal?tab=tt', icon: 'calendar' },
     { n: open.length, label: 'Tasks to review', tag: soon ? `${soon} due soon` : 'On track', foot: 'Deadlines and assignments', href: '#/?dl=', icon: 'check', warn: soon > 0 },
     { n: evs.length, label: 'Upcoming activities', tag: `${week} this week`, foot: 'Events open on campus', href: '#/events', icon: 'spark' },
     { n: unread, label: 'Campus updates', tag: unread ? 'New' : 'All read', foot: 'Unread announcements', href: '#/notifications', icon: 'megaphone' },

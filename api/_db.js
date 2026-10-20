@@ -40,8 +40,8 @@ async function allow(key, max, windowSec) {
      returning count`, [key, windowSec]);
   return r.count <= max;
 }
-const audit = (actor, action, target, detail) =>
-  q('insert into audit_log (actor, action, target, detail) values ($1, $2, $3, $4)', [actor || null, action, target || null, detail ? JSON.stringify(detail) : null]);
+const audit = (actor, action, target, detail, branch) =>
+  q('insert into audit_log (actor, action, target, detail, branch_code) values ($1, $2, $3, $4, $5)', [actor || null, action, target || null, detail ? JSON.stringify(detail) : null, branch || null]);
 
 /** Tests inject an in-memory Postgres. */
 function _setClient(fn) { client = fn; ready = null; }

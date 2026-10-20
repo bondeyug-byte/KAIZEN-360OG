@@ -18,7 +18,7 @@ export default function Admin() {
   return (
     <div>
       <PageHeader title="Admin" subtitle="Approve teachers, move students between divisions, reset attendance passwords and moderate shared notes. Canteen menus are edited on the Canteens page." />
-      <p className="mb-4 rounded-lg bg-[#EAF0FC] px-3 py-2 text-[13.5px] text-route">Real accounts (phone sign-in) are managed on the college server: open <a className="font-semibold underline" href="#/portal">College portal</a> for the teacher list, join requests, class reps, timetables and the audit log. The tools on this page work on this browser’s demo data.</p>
+      <p className="mb-4 rounded-lg bg-[#EAF0FC] px-3 py-2 text-[13.5px] text-route">Real accounts (phone sign-in) are managed on the college server: the HOD of each branch manages them in the HOD portal (sign in on the HOD tab). The tools on this page work on this browser’s demo data.</p>
       <div className="mb-4"><Segmented label="Admin section" value={tab} onChange={setTab} options={[{ value: 'teachers', label: 'Teachers' }, { value: 'students', label: 'Students' }, { value: 'notes', label: 'Notes reports' }]} /></div>
       {tab === 'teachers' && <Teachers />}{tab === 'students' && <Students />}{tab === 'notes' && <Reports />}
     </div>

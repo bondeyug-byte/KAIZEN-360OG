@@ -7,8 +7,9 @@ export class AuthError extends Error {
 }
 
 const FRIENDLY = {
+  NOT_HOD: "This number isn't registered as an HOD. HOD numbers are set by the college on the server.",
   NOT_TEACHER: "This number isn't registered for the Teacher portal. Ask the admin to register it, or sign in on the Student tab.",
-  TEACHERS_NOT_CONFIGURED: 'No teacher numbers are registered yet. The admin needs to add them on the server (TEACHER_PHONES).',
+  TEACHERS_NOT_CONFIGURED: 'No teachers are registered yet. Your HOD adds teachers in the HOD portal.',
   INVALID_PHONE: 'Enter a 10-digit Indian mobile number starting with 6–9.',
   INVALID_OTP_CODE: 'The code is 6 digits.',
   INVALID_OTP: "That code isn't right. Check the message and try again.",
@@ -49,8 +50,9 @@ async function call(path, body, method = 'POST') {
 }
 
 export function normalizePhone(input) {
-  const raw = String(input || '').replace(/[\s-]/g, '')
-  const d = raw.startsWith('+91') ? raw.slice(3) : raw
+  // Same rule as the server (api/_roles.js): +91, 91, a leading 0, spaces, dashes, brackets and dots all accepted.
+  const raw = String(input || '').replace(/[\s\-().]/g, '')
+  const d = raw.startsWith('+91') ? raw.slice(3) : /^91[6-9]\d{9}$/.test(raw) ? raw.slice(2) : /^0[6-9]\d{9}$/.test(raw) ? raw.slice(1) : raw
   return /^[6-9]\d{9}$/.test(d) ? `+91${d}` : null
 }
 export const maskPhone = (p) => (p && p.length >= 13 ? `${p.slice(0, 3)} ${p.slice(3, 5)}xxxx ${p.slice(-4)}` : p || '')

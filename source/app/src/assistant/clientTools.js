@@ -3,6 +3,9 @@
 // `pending` action that the student must confirm (by voice or tap) before anything changes.
 import { PUBLIC_TOOLS, runPublicTool, resolvePlace } from './publicTools.js'
 import { timetableForClass } from '../data/seed.js'
+import { currentTimetable } from '../lib/timetable.js'
+// Phone accounts: the server timetable (same source as the Overview and College portal); demo: the sample.
+const ttOf = (me) => { const c = currentTimetable(); return me?.authMethod === 'minimoth' ? (c.entries || []) : timetableForClass(me?.classId) }
 import { place, floorName } from '../navigator/building.js'
 import { checkTarget, marksTable, RESULT } from '../lib/academic.js'
 import { leaderboard, eligible, hasCompleted, completeChallenge } from '../lib/challenges.js'
@@ -75,7 +78,7 @@ export function runTool(name, args = {}, ctx) {
       const q = String(args.day || 'today').toLowerCase()
       let day = q.startsWith('tom') ? (wd + 1) % 7 : DAYS.findIndex((d) => q.startsWith(d.slice(0, 3)))
       if (day < 0) day = wd
-      const list = timetableForClass(me.classId).filter((t) => t.day === day).sort((a, b) => toMin(a.start) - toMin(b.start))
+      const list = ttOf(me).filter((t) => t.day === day).sort((a, b) => toMin(a.start) - toMin(b.start))
       const { mins } = istParts(now)
       return { result: {
         day: day === wd ? 'today' : DAYS[day], class: me.classId,
@@ -135,7 +138,7 @@ export function runTool(name, args = {}, ctx) {
       let p = null
       if (/next (lecture|class|lab|period)|my (lecture|class|lab)|लेक्चर|क्लास|तास/i.test(args.place || '')) {
         const { wd, mins } = istParts(now)
-        const t = timetableForClass(me.classId).filter((x) => x.day === wd && toMin(x.end) > mins).sort((a, b) => toMin(a.start) - toMin(b.start))[0]
+        const t = ttOf(me).filter((x) => x.day === wd && toMin(x.end) > mins).sort((a, b) => toMin(a.start) - toMin(b.start))[0]
         if (t) p = place(t.place.f, t.place.id)
         else return { result: { ok: false, message: 'No more lectures today.' } }
       }

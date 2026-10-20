@@ -127,5 +127,112 @@ module.exports = [
       `create index if not exists account_roles_by_scope on account_roles (role, scope)`,
     ],
   },
+  {
+    id: 3,
+    name: 'roles v2: academic years, HODs per branch, teacher divisions, join requests, class enrollments, class reps, instructions, reminders, settings',
+    // Adds only. Old tables (enrollments, account_roles 'cr') are copied, never changed, so the previous
+    // deployment keeps working if this one is rolled back.
+    up: [
+      `create table if not exists academic_years (id text primary key, label text not null, calendar text not null, level smallint not null check (level between 1 and 4), active boolean not null default true)`,
+      `insert into academic_years (id, label, calendar, level) values ('FE-2026-27', 'FE', '2026-27', 1) on conflict (id) do nothing`,
+      `alter table branches add column if not exists active boolean not null default true`,
+      `alter table divisions add column if not exists year_id text references academic_years(id)`,
+      `alter table divisions add column if not exists name text`,
+      `update divisions set year_id = 'FE-2026-27' where year = 1 and year_id is null`,
+      `update divisions set name = code where name is null`,
+      `create unique index if not exists divisions_unique_name on divisions (branch_code, year_id, name)`,
+      `create table if not exists hod_assignments (
+        phone text not null check (phone ~ '^\\+91[6-9][0-9]{9}$'),
+        branch_code text not null references branches(code),
+        active boolean not null default true,
+        updated_at timestamptz not null default now(),
+        primary key (phone, branch_code))`,
+      `alter table teacher_whitelist add column if not exists branch_code text references branches(code)`,
+      `alter table teacher_whitelist add column if not exists active boolean not null default true`,
+      `create table if not exists teacher_divisions (
+        teacher_phone text not null references teacher_whitelist(phone) on delete cascade,
+        division_code text not null references divisions(code),
+        subject text not null default '',
+        primary key (teacher_phone, division_code, subject))`,
+      `create index if not exists teacher_divisions_by_division on teacher_divisions (division_code)`,
+      `insert into teacher_divisions (teacher_phone, division_code, subject)
+         select w.phone, x->>'division', coalesce(x->>'subject', '') from teacher_whitelist w, jsonb_array_elements(w.teaches) x
+          where exists (select 1 from divisions d where d.code = x->>'division') on conflict do nothing`,
+      `update teacher_whitelist w set branch_code = (select d.branch_code from teacher_divisions t join divisions d on d.code = t.division_code where t.teacher_phone = w.phone limit 1) where branch_code is null`,
+      `create table if not exists join_requests (
+        id uuid primary key default gen_random_uuid(),
+        student_id uuid not null references accounts(id) on delete cascade,
+        division_code text not null references divisions(code),
+        status text not null default 'pending' check (status in ('pending', 'approved', 'rejected', 'cancelled')),
+        decided_by uuid references accounts(id), decided_at timestamptz,
+        decided_as text, note text not null default '',
+        created_at timestamptz not null default now())`,
+      `create unique index if not exists one_pending_join on join_requests (student_id) where status = 'pending'`,
+      `create index if not exists join_requests_by_division on join_requests (division_code, status, created_at desc)`,
+      `create table if not exists class_enrollments (
+        student_id uuid not null references accounts(id) on delete cascade,
+        division_code text not null references divisions(code),
+        year_id text not null references academic_years(id),
+        status text not null default 'active' check (status in ('active', 'archived')),
+        approved_by uuid references accounts(id), approved_at timestamptz not null default now(),
+        request_id uuid references join_requests(id),
+        archived_by uuid references accounts(id), archived_at timestamptz,
+        primary key (student_id, division_code, year_id))`,
+      `create unique index if not exists one_active_class_per_year on class_enrollments (student_id, year_id) where status = 'active'`,
+      `create index if not exists class_enrollments_by_division on class_enrollments (division_code, status)`,
+      `insert into join_requests (student_id, division_code, status, decided_by, decided_at, created_at)
+         select e.account_id, e.division_code, e.status, e.decided_by, e.decided_at, e.created_at from enrollments e
+          where not exists (select 1 from join_requests j where j.student_id = e.account_id and j.division_code = e.division_code)`,
+      `insert into class_enrollments (student_id, division_code, year_id, approved_by, approved_at)
+         select e.account_id, e.division_code, d.year_id, e.decided_by, coalesce(e.decided_at, e.created_at)
+           from enrollments e join divisions d on d.code = e.division_code where e.status = 'approved' and d.year_id is not null
+         on conflict do nothing`,
+      `create table if not exists cr_assignments (
+        student_id uuid not null references accounts(id) on delete cascade,
+        division_code text not null references divisions(code),
+        active boolean not null default true,
+        assigned_by uuid references accounts(id), assigned_at timestamptz not null default now(),
+        removed_by uuid references accounts(id), removed_at timestamptz,
+        primary key (student_id, division_code))`,
+      `create index if not exists cr_assignments_by_division on cr_assignments (division_code) where active`,
+      `insert into cr_assignments (student_id, division_code, assigned_by, assigned_at)
+         select account_id, scope, granted_by, granted_at from account_roles where role = 'cr' and exists (select 1 from divisions d where d.code = scope)
+         on conflict do nothing`,
+      `create table if not exists cr_requests (
+        id uuid primary key default gen_random_uuid(),
+        student_id uuid not null references accounts(id) on delete cascade,
+        division_code text not null references divisions(code),
+        status text not null default 'pending' check (status in ('pending', 'approved', 'rejected', 'cancelled')),
+        decided_by uuid references accounts(id), decided_at timestamptz, note text not null default '',
+        created_at timestamptz not null default now())`,
+      `create unique index if not exists one_pending_cr_request on cr_requests (student_id) where status = 'pending'`,
+      `create index if not exists cr_requests_by_division on cr_requests (division_code, status)`,
+      `create table if not exists teacher_instructions (
+        id uuid primary key default gen_random_uuid(),
+        from_id uuid not null references accounts(id),
+        branch_code text not null references branches(code),
+        title text not null, body text not null default '', due_date date,
+        created_at timestamptz not null default now())`,
+      `create table if not exists instruction_recipients (
+        instruction_id uuid not null references teacher_instructions(id) on delete cascade,
+        teacher_phone text not null references teacher_whitelist(phone) on delete cascade,
+        status text not null default 'sent' check (status in ('sent', 'seen', 'done')),
+        updated_at timestamptz not null default now(),
+        primary key (instruction_id, teacher_phone))`,
+      `create index if not exists instruction_recipients_by_teacher on instruction_recipients (teacher_phone, status)`,
+      `create table if not exists reminders (
+        id uuid primary key default gen_random_uuid(),
+        author_id uuid not null references accounts(id), author_name text not null default '', author_role text not null,
+        division_code text not null references divisions(code),
+        title text not null, body text not null default '', remind_at timestamptz not null,
+        created_at timestamptz not null default now(), deleted_at timestamptz)`,
+      `create index if not exists reminders_by_division on reminders (division_code, remind_at)`,
+      `alter table posts add column if not exists author_role text not null default 'teacher'`,
+      `create table if not exists settings (key text primary key, value jsonb not null)`,
+      `insert into settings (key, value) values ('division_capacity', '65'), ('max_crs_per_division', '2') on conflict (key) do nothing`,
+      `alter table audit_log add column if not exists branch_code text`,
+      `create index if not exists audit_log_by_branch on audit_log (branch_code, id desc)`,
+    ],
+  },
 ];
 module.exports.FE_DIVISIONS = FE_DIVISIONS;

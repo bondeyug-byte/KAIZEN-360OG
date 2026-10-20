@@ -1,6 +1,7 @@
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+  if (!require('./_session').getPhone(req)) return res.status(401).json({ offline: true, reason: 'sign in required' });
 
   const key = process.env.GEMINI_API_KEY;
   if (!key) return res.json({ offline: true, reason: 'no key' });
