@@ -62,7 +62,7 @@ export function sanitizeDb(db, emptyUserData) {
   for (const [id, p] of Object.entries(db.profiles || {})) {
     if (!p || typeof p !== 'object') { fixed++; continue }
     const q = { ...p }
-    if (!isStr(q.name)) { q.name = 'Unnamed student'; fixed++ }
+    if (typeof q.name !== 'string') { q.name = 'Unnamed student'; fixed++ } // '' is valid: a new phone account before onboarding
     for (const k of ['interests', 'subjects']) if (q[k] != null && !Array.isArray(q[k])) { q[k] = []; fixed++ }
     profiles[id] = q
   }

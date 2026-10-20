@@ -24,6 +24,24 @@ A teacher uploading a file with other divisions must choose "Check only my divis
 Not built: academic-year rollover (the schema keeps `year_id` on enrollments and an `archived` status for it),
 SE/TE/BE divisions (add rows to `academic_years` and `divisions`), push/SMS notifications, a super-admin.
 
+## 0b. Parent portal, attendance and marks (October 2026)
+One source of truth on the server (`api/_records.js`, migration 4). Parents only ever **read**.
+
+| Who | Does what | Where |
+|---|---|---|
+| Student | Adds up to 4 parent/guardian numbers (College portal → My class → Parents & guardians); can remove them | Student app |
+| Class teacher or branch HOD | Confirms or rejects each parent number (Teacher portal / HOD portal → Parents) | Teacher / HOD portal |
+| Teacher (of that division) | Records attendance per lecture (Attendance), creates assessments, enters marks, **publishes** them (Marks), drafts attendance alerts | Teacher portal |
+| HOD (of that branch) | Publishes / withdraws attendance alerts, sets the attendance requirement % (empty = none shown), creates/publishes/cancels branch events | HOD portal → Attendance alerts, Events |
+| Parent | Signs in on the **Parent** tab with the confirmed number; sees each confirmed child: attendance (overall, by subject, by month, day by day), published marks (per assessment and per term), published alerts, class notices, reminders, branch events, and “new since your last visit” | `/parent` |
+
+Rules enforced on the server for every request: a parent sees a student only while an **approved** link exists (revoking ends access at once);
+any other student id answers “not found”; drafts (marks, alerts, events) never leave staff screens; percentages are computed from records
+(lectures without a record are not counted; nothing is shown when there is no data); no grades are calculated (only a grade a teacher typed);
+no attendance cut-off is assumed (only the HOD's setting). Every write is in the audit log. Precedence: HOD > teacher > parent > student
+(an enrolled student never becomes a parent). Not built: organiser accounts on the server (events come from the HOD), uploaded report-card
+documents, push/SMS notifications (the portal shows what is new on each visit), notification preferences.
+
 ## 1. In one minute (for the HOD)
 Students, teachers and the HOD sign in with their phone number and a one-time code (MiniMoth).
 The server identifies them from a signed cookie and looks up their role in the college database (Neon Postgres):
@@ -123,7 +141,7 @@ Vercel → Deployments → promote the previous deployment. The new tables can s
 Neon keeps a restore window for the database (length depends on the plan) — check it in the Neon console.
 
 ## 9. Tests
-- `source/server-tests`: `npm install && npm test` — Phase 1 (14) and Phases 2–4 (30) against an in-memory Postgres.
+- `source/server-tests`: `npm install && npm test` — policy, timetable, Phase 1, roles v2 and Parent portal suites against an in-memory Postgres.
 - `source/app`: `npm install && npm test` — 177 app unit tests.
 - Browser end-to-end runs (two devices, HOD, teacher, class rep, students) are described in the handover message.
 

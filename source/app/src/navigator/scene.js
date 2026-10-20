@@ -202,9 +202,13 @@ function instanced(geom, mat, transforms, { cast = true, colors } = {}) {
     if (colors) im.setColorAt(i, c.set(colors[i]))
   })
   im.castShadow = cast; im.receiveShadow = true
+  im.matrixAutoUpdate = false; im.updateMatrix()
   return im
 }
 
+// Restrained per-floor accent: corridor tile tint and a wall stripe (wayfinding), same design language on every floor.
+const FLOOR_TINT = ['#F1F1EC', '#F4EEE6', '#ECF2EB', '#EAEFF4', '#F4EFE3', '#F0EAF2']
+const FLOOR_ACCENT = ['#7A2E3B', '#B4532F', '#5E8B6A', '#3F6E9A', '#C08A2E', '#7B4E7E']
 const PAL = {
   pink: '#D9B3B4', pinkDark: '#C9989A', maroon: '#7A2E3B', cream: '#EFE7D8', stone: '#BDB09C', slab: '#D8CCBE',
   room: '#E9D1CD', lab: '#DAC4A2', wc: '#C2D8CB', office: '#D5D3E6', library: '#BFD1E0', lobby: '#EFE4D6', canteen: '#E2C9A1',
@@ -230,7 +234,8 @@ function furnish(p, y, out) {
   box(0.55, 0.24, 0.04, -0.2, Math.min(1.1, W / 2 - 0.4), 2.15, p.type === 'lab' ? '#C98A1F' : '#2E6DB4')
   if (p.type === 'room') {
     box(W - 0.4, 0.16, 1.7, depth - 1.0, 0, 0.08, '#CDBFA9')                       // teaching dais
-    box(Math.min(W - 1.2, 3.4), 1.15, 0.06, depth - 0.2, 0, 1.55, '#2F4A3E')         // board
+    box(Math.min(W - 1.0, 3.55), 1.25, 0.05, depth - 0.18, 0, 1.55, '#8C8F92')        // whiteboard frame
+    box(Math.min(W - 1.2, 3.4), 1.15, 0.06, depth - 0.2, 0, 1.55, '#F2F3F0')         // whiteboard
     box(Math.min(W - 1.0, 3.6), 0.07, 0.1, depth - 0.24, 0, 0.95, '#8A7A66')         // board ledge
     box(1.3, 0.75, 0.6, depth - 1.35, W / 2 - 1.05, 0.53, '#7A5A3E')                // teacher's desk
     const cols = W >= 3.6 ? [-W / 4, W / 4] : [0], dw = Math.min(1.25, W / cols.length - 0.9)
@@ -262,7 +267,8 @@ export class CampusScene {
     this.weakGpu = /Mali-[2-4]\d\d|Mali-G(31|51|52|57|71|72)\b|Adreno \(TM\) [1-5]\d\d|Adreno [1-5]\d\d|PowerVR|SGX|GMA|HD Graphics( [2-6]\d{2,3})?\b|SwiftShader|llvmpipe|Basic Render/i.test(this.gpu)
     try { this.renderer = new THREE.WebGLRenderer({ antialias: !this.weakGpu, powerPreference: 'high-performance' }) } catch { this.ok = false; return }
     const r = this.renderer
-    this.big = r.capabilities.maxTextureSize >= 8192 && !/Mobi|Android/i.test(navigator.userAgent || '')
+    this.mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || '') || (navigator.maxTouchPoints > 1 && Math.min(screen.width, screen.height) < 820)
+    this.big = r.capabilities.maxTextureSize >= 8192 && !this.mobile
     // Low-end hint: few cores, little memory or a phone → start at 1× resolution.
     this.lowEnd = this.weakGpu || (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4 || /Mobi|Android/i.test(navigator.userAgent || '')
     this.hz = 60; this.measureHz()
@@ -353,13 +359,16 @@ export class CampusScene {
     for (let f = 0; f < FLOORS; f++) this.buildFloor(f)
     this.buildTerrace()
     this.buildArms()
+    this.buildShell()
     this.buildRoof()
+    this.buildSite()
     this.buildNightLights()
     this.buildMarkers()
     this.role = 'student'
     this.buildLifts()
     this.setupPicking()
     this.setupWalkInput()
+    this.setupResilience()
     this.applyVisibility()
     this.setQuality('auto') // weak GPUs start in Lite; low-end devices at 1× resolution
     this.loop = this.loop.bind(this)
@@ -515,7 +524,7 @@ export class CampusScene {
     const holes = openings(f - 1) // stairwells and lift shafts pass through every slab above the ground
     if (f === 2 || f === 3 || f === 4) { const r0 = f === 2 ? 74 : 70; slab.push(...plateG(64, 88, 48, TERRACE[0], 0.25, y - 0.25, PAL.slab, holes), sectorG(r0, 88, TERRACE[0], TERRACE[1], 0.25, y - 0.25, PAL.slab), ...plateG(64, 88, TERRACE[1], 132, 0.25, y - 0.25, PAL.slab, holes)) }
     else slab.push(...plateG(64, 88, 48, 132, 0.25, y - 0.25, PAL.slab, holes))
-    gloss.push(sectorG(74, 78, 48, f === 0 ? 138 : 132, 0.03, y, '#F1F1EC'))
+    gloss.push(sectorG(74, 78, 48, f === 0 ? 138 : 132, 0.03, y, FLOOR_TINT[f]))
     const radial = new Set()
     const addRadial = (r1, r2, a) => { const k = r1 + ':' + a.toFixed(2); if (radial.has(k)) return; radial.add(k); walls.push(sectorG(r1, r2, a - 0.07, a + 0.07, 3.4, y, PAL.wall)) }
     const corridorWall = (rw, a1, a2) => { walls.push(sectorG(rw - 0.09, rw + 0.09, a1, a2, 1.2, y, PAL.dado), sectorG(rw - 0.09, rw + 0.09, a1, a2, 2.2, y + 1.2, PAL.wall)) }
@@ -562,7 +571,7 @@ export class CampusScene {
       for (let k = 0; k < FLOORS; k++) for (const p of floorPlaces(k)) if (['room', 'lab', 'office', 'library', 'wc'].includes(p.type)) names.push({ key: k + ':' + p.id, text: p.short, kind: p.type })
       this.mats.decal = new THREE.MeshBasicMaterial({ map: atlas() })
       this.mats.plate = new THREE.MeshBasicMaterial({ map: plates(names) })
-      this.mats.glow = new THREE.MeshBasicMaterial({ vertexColors: true })
+      this.mats.glow = this.mats.glow || new THREE.MeshBasicMaterial({ vertexColors: true })
     }
     const y = f * H, vc = [], glow = [], dec = [], pl = []
     // Lite tier (weak GPUs, phones that can't hold the frame rate): keep what helps you find your way — signs,
@@ -595,6 +604,8 @@ export class CampusScene {
         // skirting on both wall pieces beside the door
         const rs = inner ? [73.99, 74.03] : [77.97, 78.01]
         if (full) vc.push(sectorG(rs[0], rs[1], p.lo + 0.05, p.am - gap / 2, 0.11, y, '#3E3A36'), sectorG(rs[0], rs[1], p.am + gap / 2, p.hi - 0.05, 0.11, y, '#3E3A36'))
+        vc.push(sectorG(rs[0], rs[1], p.lo + 0.05, p.am - gap / 2, 0.07, y + 1.2, FLOOR_ACCENT[f]), sectorG(rs[0], rs[1], p.am + gap / 2, p.hi - 0.05, 0.07, y + 1.2, FLOOR_ACCENT[f]))
+        if (p.type === 'room' || p.type === 'lab' || (p.type === 'office' && f >= 1)) this.roomDetail(p, frame(p), { vc, glow, dec, full, y })
         // nameplate beside the door (the door sign is on the other side)
         const slot = plateSlot(f + ':' + p.id)
         if (slot) quad(pl, rFace, p.am + (inner ? 1 : -1) * aOf(rFace, sOff), 1.72, 0.66, 0.15, face, slot)
@@ -632,6 +643,41 @@ export class CampusScene {
     fl.detail = grp; fl.detailFull = full; fl.interior.add(grp)
     if (this.lite) this.applyLite()
     this.shadowDirty = true
+  }
+  /** Stage C fittings: classrooms (projector, fans, clock, bag hooks), labs (cable trays, racks, posters), HOD cabins. */
+  roomDetail(p, F, K) {
+    const { vc, glow, dec, full, y } = K, { W, depth, box, at } = F, inner = p.side === 'inner'
+    const into = inner ? 'in' : 'out'
+    const decal = (d, s, yc, w, h, reg, face = into) => { const [r, a] = at(d, s), q = v3(r, a, 0), ry = { out: (a + 90) * D, in: (a - 90) * D, cw: a * D, ccw: a * D + Math.PI }[face]; dec.push(quadG(w, h, q.x, y + yc, q.z, ry, reg)) }
+    if (p.type === 'room') {
+      decal(0.13, Math.min(1.6, W / 2 - 0.5), 2.85, 0.42, 0.42, REG.clock)                       // wall clock above the door wall
+      box(0.36, 0.14, 0.32, depth / 2, 0, 3.6, '#E7E7E2'); box(0.04, 0.5, 0.04, depth / 2, 0, 3.95, '#555555') // ceiling projector
+      if (full) {
+        const fs = W > 6 ? [-W / 4, W / 4] : [0]
+        for (const d of [depth * 0.38, depth * 0.72]) for (const s of fs) {
+          box(0.04, 0.45, 0.04, d, s, 3.98, '#555555'); box(0.24, 0.12, 0.24, d, s, 3.72, '#D9D6CF')
+          box(1.25, 0.02, 0.14, d, s, 3.68, '#CFCAC0'); box(0.14, 0.02, 1.25, d, s, 3.68, '#CFCAC0') // blades
+        }
+        const sw = -W / 2 + 0.07
+        box(0.03, 0.07, 2.4, 2.4, sw, 1.55, '#6E5A48')                                            // bag-hook rail
+        for (let d = 1.4; d <= 3.4; d += 0.4) box(0.1, 0.04, 0.03, d, sw + 0.05, 1.5, '#3A3A3A')
+      }
+    } else if (p.type === 'lab') {
+      decal(depth / 2, -W / 2 + 0.05, 1.95, 0.6, 0.8, REG.poster1, 'ccw'); decal(depth / 2 + 2, W / 2 - 0.05, 1.95, 0.6, 0.8, REG.poster2, 'cw')
+      box(0.6, 2.0, 0.8, 0.95, W / 2 - 0.45, 1.0, '#2E3338')                                      // equipment rack
+      if (full) {
+        for (const yy of [0.5, 0.9, 1.3, 1.7]) box(0.04, 0.03, 0.04, 0.53, W / 2 - 0.3, yy, '#49D17A', glow) // status lights
+        const run = depth - 3.3
+        for (const s of [-(W / 2 - 0.3), W / 2 - 0.3]) box(0.24, 0.06, run, 1.8 + run / 2, s, 2.45, '#9AA0A6') // cable trays
+      }
+    } else { // HOD cabin / department office
+      box(1.8, 0.76, 0.85, depth - 2.6, 0, 0.38, '#5A3B26'); box(0.6, 1.0, 0.6, depth - 1.75, 0, 0.5, '#2C2C2C') // desk + chair
+      for (const s of [-0.55, 0.55]) box(0.5, 0.82, 0.5, depth - 3.7, s, 0.41, '#6E5A48')         // visitor chairs
+      box(0.4, 2.0, 2.8, depth / 2, W / 2 - 0.3, 1.0, '#6B4B33')                                  // shelving
+      for (const yy of [0.6, 1.1, 1.6]) box(0.36, 0.25, 2.6, depth / 2, W / 2 - 0.3, yy, '#C9B48A')
+      box(0.9, 0.42, 2.0, 2.6, -W / 2 + 0.55, 0.21, '#55606B')                                   // office seating
+      if (full) for (const [d, s] of [[depth - 0.5, -W / 2 + 0.5], [1.2, W / 2 - 0.5]]) { const [r, a] = at(d, s), q = v3(r, a, 0); vc.push(cylG(0.2, 0.16, 0.42, q.x, y + 0.21, q.z, '#8B5A3C', 8), cylG(0.32, 0.12, 0.6, q.x, y + 0.72, q.z, '#4E7A3A', 8)) } // plants
+    }
   }
   /** Washroom: tiled dado, three cubicles on the back wall, a basin counter with a mirror on a side wall. */
   washroom(p, F, full = true) {
@@ -745,7 +791,8 @@ export class CampusScene {
   /** Moving parts: one instanced mesh for every cab, one for every landing door panel (2 draw calls in total). */
   buildLifts() {
     this.liftDirty = new Set()
-    this.lifts = new LiftSystem({ onChange: (L) => { this.liftDirty.add(L.id); this.invalidate() } })
+    const rm = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
+    this.lifts = new LiftSystem({ reducedMotion: rm, onChange: (L) => { this.liftDirty.add(L.id); this.invalidate() } })
     this.liftList = [...this.lifts.lifts.values()]
     this.liftGroup = new THREE.Group(); this.scene.add(this.liftGroup)
     this.liftCabs = new THREE.InstancedMesh(cabGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.25, envMapIntensity: 0.6 }), this.liftList.length)
@@ -799,18 +846,19 @@ export class CampusScene {
       for (let i = 0; i <= 4; i++) for (let j = 0; j <= 4; j++) { x.save(); x.translate(i * 64, j * 64); x.rotate(Math.PI / 4); x.fillRect(-6, -6, 12, 12); x.restore() }
     }, null, this.renderer)
     tile.wrapS = tile.wrapT = THREE.RepeatWrapping; tile.repeat.set(0.25, 0.25)
-    const deckG = sectorG(64, 74, a0, a1, 0.25, AY - 0.25, '#ffffff'); deckG.deleteAttribute('color')
+    const E0 = 64 // deck edge = the building line (the terrace is recessed, nothing overhangs the courtyard)
+    const deckG = sectorG(E0, 74, a0, a1, 0.25, AY - 0.25, '#ffffff'); deckG.deleteAttribute('color')
     const deck = new THREE.Mesh(deckG, new THREE.MeshStandardMaterial({ map: tile, roughness: 0.35, envMapIntensity: 0.7 }))
     deck.receiveShadow = true; this.terrace.deck.add(deck)
     // Balustrade along the courtyard edge, on the building line
-    const bal = [sectorG(64.0, 64.6, a0, a1, 0.18, AY + 1.0, PAL.cream), sectorG(64.0, 64.6, a0, a1, 0.22, AY, '#5E3A30')]
-    for (let a = a0 + 0.4; a < a1; a += 0.8) { const p = v3(64.3, a, 0); bal.push(cylG(0.08, 0.13, 0.85, p.x, AY + 0.62, p.z, PAL.cream, 6)) }
+    const bal = [sectorG(E0, E0 + 0.6, a0, a1, 0.18, AY + 1.0, PAL.cream), sectorG(E0, E0 + 0.6, a0, a1, 0.22, AY, '#5E3A30')]
+    for (let a = a0 + 0.4; a < a1; a += 0.8) { const p = v3(E0 + 0.3, a, 0); bal.push(cylG(0.08, 0.13, 0.85, p.x, AY + 0.62, p.z, PAL.cream, 6)) }
     this.terrace.deck.add(merged(bal, this.mats.vc))
     // Giant Corinthian columns on the courtyard face, rising three storeys from the deck to the Floor 5 slab
     const col = []
     const n = 11, step = (a1 - a0) / (n - 1)
     for (let k = 0; k < n; k++) {
-      const a = a0 + k * step, p = v3(65.2, a, 0), hgt = 3 * H - 0.9
+      const a = a0 + k * step, p = v3(E0 + 1.2, a, 0), hgt = 3 * H - 0.9
       col.push(cylG(0.5, 0.56, hgt, p.x, AY + hgt / 2, p.z, PAL.cream, 14))
       col.push(cylG(0.78, 0.55, 0.55, p.x, AY + 3 * H - 0.62, p.z, PAL.cream, 10), boxG(1.5, 0.28, 1.5, p.x, AY + 3 * H - 0.2, p.z, (a + 90) * D, PAL.cream))
       col.push(cylG(0.72, 0.72, 0.28, p.x, AY + 0.14, p.z, PAL.stone, 12))
@@ -842,6 +890,100 @@ export class CampusScene {
     const mp = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 3.2), new THREE.MeshStandardMaterial({ map: mural, roughness: 0.9 }))
     mp.position.copy(v3(73.75, 82.5, AY + 2.3)); mp.lookAt(0, AY + 2.3, 0); this.terrace.deck.add(mp)
     this.scene.add(this.terrace.deck, this.terrace.colonnade, this.terrace.glass)
+  }
+
+  /**
+   * Stage D: exterior details and grounds. Everything static is merged; repeated props are instanced (one draw call
+   * per kind). No new lights or shadow casters: lamp heads are an unlit material that brightens at night.
+   */
+  buildSite() {
+    const g = [], y5 = FLOORS * H
+    // Facade: sunshade (chajja) over each outer window row, parapet with a cap on the roof edge
+    for (let f = 0; f < FLOORS; f++) g.push(sectorG(88.1, 88.75, 48, 132, 0.08, f * H + 3.62, PAL.cream))
+    g.push(sectorG(88.0, 88.5, 48, 132, 0.9, y5 + 0.5, PAL.pink), sectorG(87.95, 88.55, 48, 132, 0.08, y5 + 1.4, PAL.cream))
+    g.push(sectorG(63.5, 64.0, 48, 132, 0.9, y5 + 0.5, PAL.pink), sectorG(63.45, 64.05, 48, 132, 0.08, y5 + 1.4, PAL.cream))
+    // Main entrance (courtyard side, ground floor): two steps (the terrace above is its cover; no extra columns)
+    g.push(sectorG(61.4, 64.0, 85.2, 94.8, 0.15, -0.3, PAL.stone), sectorG(62.6, 64.0, 85.2, 94.8, 0.3, -0.3, PAL.stone))
+    // Compound wall with a coping, joined to the existing gate pillars (gap = the gate)
+    const wall = (x1, z1, x2, z2) => { const L = Math.hypot(x2 - x1, z2 - z1), rot = Math.atan2(x2 - x1, z2 - z1); g.push(boxG(0.35, 2.2, L, (x1 + x2) / 2, 0.8, (z1 + z2) / 2, rot, PAL.cream), boxG(0.5, 0.12, L, (x1 + x2) / 2, 1.96, (z1 + z2) / 2, rot, PAL.maroon)) }
+    wall(-150, 40, -12.3, 40); wall(12.3, 40, 150, 40); wall(-150, 40, -150, -160); wall(150, 40, 150, -160); wall(-150, -160, 150, -160)
+    // Walkways: side paths from the main walk to the parking areas; lawns either side of the main walk
+    g.push(boxG(118, 0.1, 3.0, -61, -0.2, 26, 0, '#D9BFA4'), boxG(118, 0.1, 3.0, 61, -0.2, 26, 0, '#D9BFA4'))
+    for (const sx of [-1, 1]) g.push(boxG(30, 0.08, 22, sx * 21, -0.22, 12, 0, '#6B9550'), boxG(34, 0.08, 9, sx * 45, -0.22, 35, 0, '#6B9550'))
+    // Car park (west) and bike stand (east): marked bays
+    g.push(boxG(46, 0.06, 26, -96, -0.22, 6, 0, '#5A5A5C'))
+    for (let i = 0; i <= 12; i++) g.push(boxG(0.12, 0.07, 5, -117 + i * 3.6, -0.18, -2.5, 0, '#E8E8E8'), boxG(0.12, 0.07, 5, -117 + i * 3.6, -0.18, 14.5, 0, '#E8E8E8'))
+    g.push(boxG(26, 0.06, 8, 82, -0.22, 31, 0, '#6A6A6C'), boxG(26, 2.6, 0.1, 82, 2.4, 27.2, 0, '#9EA4A8'), boxG(26, 0.1, 4, 82, 2.6, 29, 0, '#9EA4A8'))
+    // Flagpole inside the gate
+    g.push(cylG(0.1, 0.14, 10, 9, 4.7, 30, '#D8D8D8', 8), cylG(0.9, 1.1, 0.4, 9, -0.1, 30, PAL.stone, 12))
+    // Benches along the main walk (between the existing palms)
+    for (const z of [8, 18, 28]) for (const sx of [-1, 1]) { g.push(boxG(0.5, 0.08, 1.8, sx * 3.4, 0.15, z, 0, '#8A6A4C'), boxG(0.06, 0.45, 1.8, sx * 3.68, 0.4, z, 0, '#8A6A4C'), boxG(0.45, 0.45, 0.08, sx * 3.4, -0.08, z - 0.8, 0, '#3A3A3A'), boxG(0.45, 0.45, 0.08, sx * 3.4, -0.08, z + 0.8, 0, '#3A3A3A')) }
+    // Lamp posts along the walk and side paths (posts merged here, heads instanced below)
+    const heads = []
+    for (let z = 2; z <= 36; z += 8.5) for (const sx of [-1, 1]) { g.push(cylG(0.07, 0.1, 4.2, sx * 2.9, 1.8, z, '#3A3F3A', 6)); heads.push({ x: sx * 2.9, y: 4.0, z }) }
+    for (let x = 12; x <= 115; x += 13) for (const sx of [-1, 1]) { g.push(cylG(0.07, 0.1, 4.2, sx * x, 1.8, 28, '#3A3F3A', 6)); heads.push({ x: sx * x, y: 4.0, z: 28 }) }
+    const site = merged(g, this.mats.vc, { cast: false }); this.scene.add(site)
+    // flag (tricolour bands) — unlit so it reads at a distance
+    const flag = merged([boxG(0.03, 0.42, 1.9, 9, 9.15, 31.0, 0, '#E4802B'), boxG(0.03, 0.42, 1.9, 9, 8.73, 31.0, 0, '#F5F5F0'), boxG(0.03, 0.42, 1.9, 9, 8.31, 31.0, 0, '#2E7D32')], this.mats.vc, { cast: false })
+    this.scene.add(flag)
+    this.lampHeads = instanced(new THREE.SphereGeometry(0.26, 10, 6), new THREE.MeshBasicMaterial({ color: '#BDB6A6' }), heads, { cast: false }); this.scene.add(this.lampHeads)
+    // Instanced cars and bikes
+    let sd = 5; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647
+    const car = mergeGeometries([boxG(1.8, 0.8, 4.2, 0, 0.55, 0, 0, '#FFFFFF'), boxG(1.6, 0.6, 2.2, 0, 1.25, -0.2, 0, '#40505C'), ...[[-0.9, 1.3], [0.9, 1.3], [-0.9, -1.3], [0.9, -1.3]].map(([x, z]) => { const w = new THREE.CylinderGeometry(0.33, 0.33, 0.25, 10).toNonIndexed(); w.rotateZ(Math.PI / 2); w.translate(x, 0.33, z); return colorize(w, '#222222') })], false)
+    const cars = [], cc = [], palette = ['#E8E8E8', '#B33A3A', '#2F4F7F', '#9AA0A6', '#1F1F1F', '#C9B27C']
+    for (let i = 0; i < 12; i++) for (const row of [0, 1]) { if (rnd() < 0.3) continue; cars.push({ x: -115.2 + i * 3.6, y: -0.25, z: row ? 15 : -3, ry: row ? Math.PI : 0 }); cc.push(palette[Math.floor(rnd() * palette.length)]) }
+    this.scene.add(instanced(car, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.3 }), cars, { cast: false, colors: cc }))
+    const wheel = (z) => { const w = new THREE.TorusGeometry(0.3, 0.04, 5, 12).toNonIndexed(); w.rotateY(Math.PI / 2); w.translate(0, 0.32, z); return colorize(w, '#1E1E1E') }
+    const bike = mergeGeometries([wheel(-0.55), wheel(0.55), boxG(0.06, 0.06, 1.1, 0, 0.55, 0, 0, '#B23A3A'), boxG(0.06, 0.5, 0.06, 0, 0.6, 0.35, 0, '#3A3A3A'), boxG(0.5, 0.05, 0.05, 0, 0.88, 0.45, 0, '#2A2A2A')], false)
+    const bikes = []; for (let i = 0; i < 30; i++) if (rnd() < 0.8) bikes.push({ x: 70 + i * 0.85, y: -0.2, z: 30.5, ry: 0 })
+    this.scene.add(instanced(bike, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 }), bikes, { cast: false }))
+    // Shrubs along the compound wall and lawn edges (instanced)
+    const sh = []
+    for (let x = -146; x <= 146; x += 4.5) if (Math.abs(x) > 16) sh.push({ x, y: 0.2, z: 37.8, s: 0.7 + rnd() * 0.4, sy: 0.6 })
+    for (let z = 34; z >= -150; z -= 6) for (const sx of [-1, 1]) sh.push({ x: sx * 147.6, y: 0.2, z, s: 0.8 + rnd() * 0.4, sy: 0.7 })
+    this.scene.add(instanced(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: '#4E7A3A', roughness: 0.9, flatShading: true }), sh, { cast: false }))
+    // A few soft cloud sprites (hidden at night)
+    const cloudTex = canvasTex(256, 128, (x, w, h) => { for (let i = 0; i < 9; i++) { const cx = 40 + i * 22 + Math.sin(i * 3) * 10, cy = 70 + Math.cos(i * 2) * 14, rr = 26 + (i % 3) * 8; const gr = x.createRadialGradient(cx, cy, 0, cx, cy, rr); gr.addColorStop(0, 'rgba(255,255,255,.9)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, w, h) } }, null, this.renderer)
+    const cm = new THREE.SpriteMaterial({ map: cloudTex, transparent: true, depthWrite: false, fog: false, opacity: 0.85 })
+    this.clouds = [[-260, 170, -520, 180], [140, 210, -600, 230], [420, 160, -300, 160], [-480, 190, 120, 200], [60, 240, 380, 210]].map(([x, yy, z, sc]) => { const c = new THREE.Sprite(cm); c.position.set(x, yy, z); c.scale.set(sc, sc / 2, 1); this.scene.add(c); return c })
+    for (const o of [site, flag]) o.matrixAutoUpdate = false
+  }
+
+  /**
+   * Stage E: the exterior shells of lower floors (curve + both end blocks) merged into ONE mesh ordered by level,
+   * plus ONE instanced mesh of their windows. A view draws the first N levels with a draw range / instance count,
+   * so the campus view and lower floors cost 2 draw calls instead of ~60. The per-floor meshes stay for the floor
+   * you are on (they are hidden only where the shell covers them).
+   */
+  buildShell() {
+    const levels = Math.max(ARM_LEVELS, FLOORS), geos = [], offs = [0], winOffs = [0], parts = [], m4 = new THREE.Matrix4(), wins = []
+    let verts = 0
+    for (let k = 0; k < levels; k++) {
+      const objs = [], fl = this.floors[k]
+      if (fl) for (const g of [fl.outer, fl.inner, fl.top]) objs.push(...g.children)
+      for (const arm of this.arms) if (arm.levels[k]) objs.push(...arm.levels[k].children)
+      for (const o of objs) {
+        if (o.isInstancedMesh && o.material === this.mats.window) { for (let i = 0; i < o.count; i++) { o.getMatrixAt(i, m4); wins.push(m4.clone()) } o.userData.shellLevel = k; parts.push(o) }
+        else if (o.isMesh && !o.isInstancedMesh && o.material === this.mats.vc && !o.geometry.index) { geos.push(o.geometry); verts += o.geometry.attributes.position.count; o.userData.shellLevel = k; parts.push(o) }
+      }
+      offs.push(verts); winOffs.push(wins.length)
+    }
+    let g = null
+    try { g = mergeGeometries(geos, false) } catch { g = null }
+    if (!g) { parts.forEach((o) => delete o.userData.shellLevel); return } // fall back to per-floor meshes
+    this.shell = new THREE.Mesh(g, this.mats.vc); this.shell.castShadow = this.shell.receiveShadow = true
+    this.shellWin = new THREE.InstancedMesh(new THREE.BoxGeometry(1.55, 1.6, 0.14), this.mats.window, wins.length)
+    wins.forEach((m, i) => this.shellWin.setMatrixAt(i, m)); this.shellWin.receiveShadow = true
+    for (const o of [this.shell, this.shellWin]) { o.matrixAutoUpdate = false; o.updateMatrix(); this.scene.add(o) }
+    Object.assign(this, { shellOffs: offs, shellWinOffs: winOffs, shellParts: parts })
+  }
+  /** Draw levels [0, n) from the shell and hide the per-floor meshes it replaces. */
+  applyShell(n) {
+    if (!this.shell) return
+    n = Math.max(0, Math.min(n, this.shellOffs.length - 1))
+    this.shell.geometry.setDrawRange(0, this.shellOffs[n]); this.shell.visible = n > 0
+    this.shellWin.count = this.shellWinOffs[n]; this.shellWin.visible = n > 0
+    for (const o of this.shellParts) o.visible = o.userData.shellLevel >= n
   }
 
   /** The two tall straight blocks that close the "C" at each end of the curve. */
@@ -913,22 +1055,33 @@ export class CampusScene {
   ensureLabels(f) {
     const fl = this.floors[f]
     if (fl.labels) return
-    fl.labels = new THREE.Group()
-    for (const p of floorPlaces(f)) {
-      if (p.type === 'amphi') continue
-      const text = p.type === 'canteen' ? 'Canteen' : p.type === 'library' ? 'Library' : p.type === 'lobby' ? 'Lobby' : p.type === 'stairs' ? (p.id === 'stairs_w' ? 'Stairs W' : 'Stairs E') : p.code
-      const dark = p.type === 'lift'
-      const tex = canvasTex(256, 64, (x, W, Hh) => {
-        x.fillStyle = dark ? '#2B1519' : '#FFFBF6'; x.fillRect(0, 0, W, Hh); x.strokeStyle = dark ? '#2B1519' : '#C9B4AC'; x.lineWidth = 4; x.strokeRect(2, 2, W - 4, Hh - 4)
-        x.fillStyle = dark ? '#FBEFEA' : '#2B1519'; x.font = '700 34px ui-monospace, Menlo, monospace'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text, W / 2, Hh / 2 + 2)
+    // All of a floor's labels in ONE draw call: a per-floor label sheet (256 × 64 px cells) on camera-facing quads
+    // (billboarded in the vertex shader), instead of one sprite + one texture per label.
+    const list = floorPlaces(f).filter((p) => p.type !== 'amphi')
+    const rows = Math.ceil(list.length / 4), texH = 2 ** Math.ceil(Math.log2(rows * 64)), tex = canvasTex(1024, texH, (x) => { // power-of-two height: WebGL1-safe
+      list.forEach((p, i) => {
+        const text = p.type === 'canteen' ? 'Canteen' : p.type === 'library' ? 'Library' : p.type === 'lobby' ? 'Lobby' : p.type === 'stairs' ? (p.id === 'stairs_w' ? 'Stairs W' : 'Stairs E') : p.code
+        const dark = p.type === 'lift', ox = (i % 4) * 256, oy = Math.floor(i / 4) * 64
+        x.fillStyle = dark ? '#2B1519' : '#FFFBF6'; x.fillRect(ox, oy, 256, 64); x.strokeStyle = dark ? '#2B1519' : '#C9B4AC'; x.lineWidth = 4; x.strokeRect(ox + 2, oy + 2, 252, 60)
+        x.fillStyle = dark ? '#FBEFEA' : '#2B1519'; x.font = '700 34px ui-monospace, Menlo, monospace'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text, ox + 128, oy + 34)
       })
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }))
-      const w = p.type === 'room' || p.type === 'lab' ? 4.6 : 3.8
-      s.scale.set(w, w / 4, 1)
-      s.position.copy(v3(p.type === 'canteen' ? 80 : p.rm, p.type === 'canteen' ? 137 : p.am, f * H + (p.type === 'lift' ? H - 0.15 : 3.9)))
-      s.userData.place = p
-      fl.labels.add(s)
-    }
+    })
+    const pos = [], corner = [], uv = [], idx = []
+    list.forEach((p, i) => {
+      const w = p.type === 'room' || p.type === 'lab' ? 4.6 : 3.8, c = v3(p.type === 'canteen' ? 80 : p.rm, p.type === 'canteen' ? 137 : p.am, f * H + (p.type === 'lift' ? H - 0.15 : 3.9))
+      const u0 = (i % 4) / 4, u1 = u0 + 0.25, v1 = 1 - (Math.floor(i / 4) * 64) / texH, v0 = v1 - 64 / texH, b = i * 4
+      for (const [cx, cy, u, v] of [[-1, -1, u0, v0], [1, -1, u1, v0], [1, 1, u1, v1], [-1, 1, u0, v1]]) { pos.push(c.x, c.y, c.z); corner.push(cx * w / 2, cy * w / 8); uv.push(u, v) }
+      idx.push(b, b + 1, b + 2, b, b + 2, b + 3)
+    })
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('corner', new THREE.Float32BufferAttribute(corner, 2)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx)
+    g.computeBoundingSphere(); g.boundingSphere.radius += 3
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { map: { value: tex } }, transparent: true,
+      vertexShader: 'attribute vec2 corner; varying vec2 vUv; void main(){ vUv = uv; vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]); vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]); vec3 p = position + right * corner.x + up * corner.y; gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0); }',
+      fragmentShader: 'uniform sampler2D map;\nvarying vec2 vUv;\nvoid main() {\n  vec4 c = texture2D(map, vUv);\n  if (c.a < 0.05) discard;\n  gl_FragColor = c;\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}',
+    })
+    fl.labels = new THREE.Mesh(g, mat); fl.labels.renderOrder = 3; fl.labels.matrixAutoUpdate = false
     fl.group.add(fl.labels)
   }
 
@@ -955,6 +1108,8 @@ export class CampusScene {
     this.routeGroup.children.forEach((o) => (o.visible = campus || (m === 'walk' ? o.userData.f === cf : o.userData.f <= cf)))
     if (!campus) this.ensureLabels(cf)
     this.setLiftVisibility(campus ? -1 : m === 'walk' ? cf + 1 : cf)
+    if (this.liftGroup) this.liftGroup.visible = !campus
+    this.applyShell(campus ? Infinity : cf)
     this.shadowDirty = true; this.invalidate()
   }
 
@@ -981,13 +1136,13 @@ export class CampusScene {
     this.applyNightPost()
     this.hemi.intensity = on ? 0.25 : 1.1; this.sun.intensity = on ? 0.25 : 2.6; this.sun.color.set(on ? '#8AB0FF' : '#FFEBD0')
     this.mats.window.emissiveIntensity = on ? 0.9 : 0; this.mats.darkGlass.emissiveIntensity = on ? 0.25 : 0; this.syncLite()
-    this.glows.forEach((g) => (g.visible = on)); this.lamp.intensity = on ? 320 : 0; if (this.gateSign) this.gateSign.color.set(on ? '#5A5650' : '#ffffff'); this.stars.visible = on
+    this.glows.forEach((g) => (g.visible = on)); this.lamp.intensity = on ? 320 : 0; this.lampHeads?.material.color.set(on ? '#FFD98A' : '#BDB6A6'); this.clouds?.forEach((c) => (c.visible = !on)); if (this.gateSign) this.gateSign.color.set(on ? '#5A5650' : '#ffffff'); this.stars.visible = on
     this.shadowDirty = true; this.invalidate()
   }
   setQuality(q) {
     this.quality = q
     const shadow = (n) => { if (this.sun.shadow.mapSize.x !== n) { this.sun.shadow.mapSize.set(n, n); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null } }
-    if (q === 'high') { this.dprTarget = Math.min(window.devicePixelRatio || 1, 2); this.sun.castShadow = true; this.postOn = true; this.aoOn = true; shadow(this.big ? 4096 : 2048) }
+    if (q === 'high') { this.dprTarget = Math.min(window.devicePixelRatio || 1, this.mobile ? 1.5 : 2); this.sun.castShadow = true; this.postOn = true; this.aoOn = true; shadow(this.big ? 4096 : 2048) }
     else if (q === 'saver' || q === 'lite') { this.dprTarget = Math.min(1, window.devicePixelRatio || 1) * (this.lowEnd ? 0.85 : 1); this.sun.castShadow = false; this.postOn = false }
     else if (q === 'performance') { this.dprTarget = this.lowEnd ? 0.85 : 1; this.sun.castShadow = !this.lowEnd; this.postOn = false; shadow(1024) } // high frame rate: no post-processing
     else { this.dprTarget = this.lowEnd ? 1 : Math.min(window.devicePixelRatio || 1, 1.5); this.sun.castShadow = true; this.postOn = true; this.aoOn = true; shadow(2048) }
@@ -1185,6 +1340,8 @@ export class CampusScene {
     window.addEventListener('keydown', this.onKeyDown); window.addEventListener('keyup', this.onKeyUp)
   }
   press(key, on) { this.walk.keys[key] = on; this.invalidate() }
+  /** Virtual joystick: x = strafe right, y = forward, each −1…1 (null when released). */
+  setStick(x, y) { this.walk.stick = x === null ? null : { x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)) }; this.invalidate() }
   /** Lift whose cab footprint contains a plan point. */
   liftAt(r, a) { return this.liftList.find((L) => { const [ra, rb] = liftR(L); return r >= ra && r <= rb && a >= L.lo && a <= L.hi }) || null }
   /** Lift whose landing door is within 1.5 m of the walker (corridor side). */
@@ -1220,7 +1377,8 @@ export class CampusScene {
     const W = this.walk, p = W.pos
     const from = { r: Math.hypot(p.x, p.z), a: Math.atan2(-p.z, p.x) / D }
     const nx = p.x + dx, nz = p.z + dz
-    let to = { r: Math.max(64.6, Math.min(87.4, Math.hypot(nx, nz))), a: Math.max(48.6, Math.min(this.floor === 0 && !W.lift ? 141 : 131.4, Math.atan2(-nz, nx) / D)) }
+    const aN = Math.atan2(-nz, nx) / D, onDeck = this.floor === 2 && !W.lift && aN > TERRACE[0] + 0.3 && aN < TERRACE[1] - 0.3
+    let to = { r: Math.max(onDeck ? LOGGIA.deck[0] + 0.5 : 64.6, Math.min(87.4, Math.hypot(nx, nz))), a: Math.max(48.6, Math.min(this.floor === 0 && !W.lift ? 141 : 131.4, Math.atan2(-nz, nx) / D)) }
     const Lf = W.lift ? this.lifts.get(W.lift) : null, Lt = this.liftAt(to.r, to.a)
     const corridor = (L, q) => (L.inner ? q.r >= L.door && q.r <= 78 : q.r <= L.door && q.r >= 74)
     if (Lf && Lt !== Lf) { // leaving the cab: only through open doors, into the corridor
@@ -1286,9 +1444,27 @@ export class CampusScene {
     this.ro = new ResizeObserver(() => this.resize()); this.ro.observe(container)
     this.resize()
     this.running = true; this.clock = performance.now()
-    requestAnimationFrame(this.loop)
+    if (this._raf) cancelAnimationFrame(this._raf) // never two loops, even after a quick unmount/mount
+    this._raf = requestAnimationFrame(this.loop)
   }
-  unmount() { this.running = false; this.ro?.disconnect(); this.renderer.domElement.remove(); this.container = null }
+  unmount() { this.running = false; if (this._raf) cancelAnimationFrame(this._raf); this._raf = 0; this.ro?.disconnect(); this.renderer.domElement.remove(); this.container = null }
+  /**
+   * Stage E resilience: WebGL context loss/restore (three.js re-uploads geometry and textures on restore; we only
+   * re-render shadows and the frame) and tab visibility (no rendering while hidden, no time jump on return).
+   * Navigation, floor, lift queues and walk state live in plain objects, so nothing is lost.
+   */
+  setupResilience() {
+    const el = this.renderer.domElement
+    el.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.contextLost = true; this.emit('context', 'lost') })
+    el.addEventListener('webglcontextrestored', () => {
+      this.contextLost = false; try { this.composer?.dispose?.() } catch { /* lost with the old context */ } this.composer = null; this.postFailed = false // post-processing targets are rebuilt lazily
+      this.shadowDirty = true; this.setDpr(this.dpr); this.invalidate(); this.emit('context', 'restored')
+    })
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => {
+      this.hidden = document.hidden
+      if (!this.hidden) { this.clock = performance.now(); this._liftClock = performance.now(); this.frames.length = 0; this.invalidate() }
+    })
+  }
   setVisible(v) { this.visible = v; if (v) { this.resize(); this.invalidate() } }
   resize() {
     if (!this.container) return
@@ -1302,7 +1478,8 @@ export class CampusScene {
 
   loop(nowMs) {
     if (!this.running) return
-    requestAnimationFrame(this.loop)
+    this._raf = requestAnimationFrame(this.loop)
+    if (this.contextLost || this.hidden) return // nothing to draw (lost GPU context, or background tab)
     const dt = Math.min((nowMs - this.clock) / 1000, 0.08); this.clock = nowMs
     let animating = false
     // lifts run on real time (up to 0.25 s per frame) so a slow device does not slow the ride itself
@@ -1329,15 +1506,18 @@ export class CampusScene {
     } else this.you.visible = false
     if (this.mode === 'walk') {
       const k = this.walk.keys, sp = 9 * dt, turn = 1.8 * dt
-      const moving = k.w || k.s || k.a || k.d || k.arrowup || k.arrowdown || k.arrowleft || k.arrowright
+      const st = this.walk.stick, stickOn = !!st && Math.hypot(st.x, st.y) > 0.08 // virtual joystick (touch)
+      const moving = stickOn || k.w || k.s || k.a || k.d || k.arrowup || k.arrowdown || k.arrowleft || k.arrowright
       if (k.arrowleft) this.walk.yaw += turn
       if (k.arrowright) this.walk.yaw -= turn
-      const fw = new THREE.Vector3(-Math.sin(this.walk.yaw), 0, -Math.cos(this.walk.yaw)), rt = new THREE.Vector3(Math.cos(this.walk.yaw), 0, -Math.sin(this.walk.yaw))
-      const W = this.walk, mv = new THREE.Vector3(), slow = W.zone ? 3 / 9 : 1 // walking pace on stairs and in lifts
+      const T = this._tmp || (this._tmp = { fw: new THREE.Vector3(), rt: new THREE.Vector3(), mv: new THREE.Vector3(), look: new THREE.Vector3() }) // reused every frame
+      const fw = T.fw.set(-Math.sin(this.walk.yaw), 0, -Math.cos(this.walk.yaw)), rt = T.rt.set(Math.cos(this.walk.yaw), 0, -Math.sin(this.walk.yaw))
+      const W = this.walk, mv = T.mv.set(0, 0, 0), slow = W.zone ? 3 / 9 : 1 // walking pace on stairs and in lifts
       if (k.w || k.arrowup) mv.addScaledVector(fw, sp * slow)
       if (k.s || k.arrowdown) mv.addScaledVector(fw, -sp * slow)
       if (k.a) mv.addScaledVector(rt, -sp * slow)
       if (k.d) mv.addScaledVector(rt, sp * slow)
+      if (stickOn) { mv.addScaledVector(fw, sp * slow * st.y); mv.addScaledVector(rt, sp * slow * st.x) }
       const n = Math.max(1, Math.ceil(mv.length() / 0.2))
       for (let i = 0; i < n; i++) if (!this.walkStep(mv.x / n, mv.z / n)) { // blocked: try sliding along one axis
         if (!this.walkStep(mv.x / n, 0)) this.walkStep(0, mv.z / n)
@@ -1350,12 +1530,14 @@ export class CampusScene {
       const hold = inDoor ? near.id : null
       if (hold !== W.hold) { if (W.hold) this.lifts.setHold(W.hold, false); if (hold) this.lifts.setHold(hold, true); W.hold = hold }
       W.pos.y = W.foot + 1.65
-      if (near) {
+      if (near && nowMs - (W.infoAt || 0) < 120 && W.info) { /* lift panel refreshed at most ~8×/s */ }
+      else if (near) {
+        W.infoAt = nowMs
         const ok = liftAllowed(near.id, this.role)
         this.emitLift({ id: near.id, name: near.name, inside: !!L, allowed: ok, state: near.state, level: near.level, here: near.level === this.floor && near.state !== 'MOVING', moving: near.state === 'MOVING', queue: [...near.queue], panel: !!L && W.panel, floor: this.floor })
       } else this.emitLift(null)
       this.camera.position.copy(this.walk.pos)
-      this.camera.lookAt(this.walk.pos.clone().add(new THREE.Vector3(-Math.sin(this.walk.yaw) * Math.cos(this.walk.pitch), Math.sin(this.walk.pitch), -Math.cos(this.walk.yaw) * Math.cos(this.walk.pitch))))
+      this.camera.lookAt(T.look.set(-Math.sin(this.walk.yaw) * Math.cos(this.walk.pitch), Math.sin(this.walk.pitch), -Math.cos(this.walk.yaw) * Math.cos(this.walk.pitch)).add(this.walk.pos))
       if (moving) animating = true
     } else if (this.flight) {
       const F = this.flight; F.t = Math.min(1, F.t + dt / F.dur); const e = F.t * F.t * (3 - 2 * F.t)
@@ -1422,7 +1604,8 @@ export class CampusScene {
       else if (!this.lite) this.setLite(true)
       this.emit('tier', this.tier())
       f.length = 0
-    } else if (fps >= T * 0.97 && this.dpr < this.dprTarget) { this.setDpr(Math.min(this.dprTarget, +(this.dpr + 0.25).toFixed(2))); f.length = 0 }
+      this.lastDown = nowMs
+    } else if (fps >= T * 0.97 && this.dpr < this.dprTarget && nowMs - (this.lastDown || 0) > 10000) { this.setDpr(Math.min(this.dprTarget, +(this.dpr + 0.25).toFixed(2))); f.length = 0 }
   }
 
   pose() {

@@ -50,13 +50,14 @@ export default function Landing() {
             {!signedIn && <a href="#/login?role=student" className="press inline-flex min-h-[52px] items-center gap-2 rounded-2xl bg-lime px-6 text-[16px] font-bold text-lime-ink hover:brightness-95">Student Login</a>}
             <button type="button" onClick={() => { demoLogin('u_aarav'); startTour(); window.location.hash = '/' }} className="press glass-btn inline-flex min-h-[52px] items-center gap-2.5 rounded-2xl px-6 text-[16px] font-semibold"><Icon name="spark" size={18} />Guided demo</button>
           </div>
-          {!signedIn && <div className="mt-8 grid max-w-[880px] gap-3 sm:grid-cols-3" role="list" aria-label="Choose your portal">
-            {[['student', 'Student', 'Classwork, attendance, challenges, notes, rides and peer tutors.', 'user'], ['teacher', 'Teacher', 'Send classwork, run challenges, review solutions, record attendance.', 'book'], ['organiser', 'Council / Club', 'Event desk: requests, upcoming events and chat with students.', 'calendar']].map(([r, t, d, ic]) => (
+          {!signedIn && <div className="mt-8 grid max-w-[980px] gap-3 sm:grid-cols-2 lg:grid-cols-4" role="list" aria-label="Choose your portal">
+            {[['student', 'Student', 'Your class, timetable, attendance, marks, notes, rides and peer tutors.', 'user'], ['teacher', 'Teacher', 'Record attendance, enter and publish marks, post to your classes.', 'book'], ['hod', 'HOD', 'Teachers, class reps, alerts, events and the audit log for your branch.', 'shield'], ['parent', 'Parent', "Your child's attendance, published marks, alerts, notices and events.", 'calendar']].map(([r, t, d, ic]) => (
               <a key={r} role="listitem" href={`#/login?role=${r}`} className="press glass-btn group flex flex-col gap-1 rounded-2xl p-4 text-left">
                 <span className="flex items-center gap-2 text-[16px] font-bold"><Icon name={ic} size={18} />{t} portal<Icon name="chev" size={16} className="ml-auto transition-transform group-hover:translate-x-0.5" /></span>
                 <span className="text-[13px] text-white/80">{d}</span>
               </a>))}
           </div>}
+          {!signedIn && <p className="mt-3 text-[12.5px] text-white/80"><a href="#/login?role=organiser" className="font-semibold underline underline-offset-2">Council / Club event desk (demo) →</a></p>}
           {!signedIn && <p className="mt-3 text-[12px] text-white/70">Demo sign-in is simulated: roles are enforced inside the app only. A production deployment must check them on a server.</p>}
         </div>
         <p className="relative z-10 pb-6 text-center font-mono text-[12px] tracking-[.32em] text-white/85">ACADEMICS · PEOPLE · CAMPUS LIFE</p>

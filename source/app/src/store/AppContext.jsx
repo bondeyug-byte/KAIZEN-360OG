@@ -8,7 +8,7 @@ import { notify, deadlineNotifications, markRead, markAllRead } from '../lib/not
 
 const Ctx = createContext(null)
 /** Role fields from a server response (/api/app/me or /api/auth/*). The browser never decides these. */
-const rolesFrom = (r) => ({ role: r.role || 'student', hod: r.hod || null, teacher: r.teacher || null, admin: false, ...(r.cr ? { cr: r.cr } : {}), ...('enrollment' in r ? { enrollment: r.enrollment, joinRequest: r.joinRequest, crRequest: r.crRequest, counts: r.counts } : {}) })
+const rolesFrom = (r) => ({ role: r.role || 'student', hod: r.hod || null, teacher: r.teacher || null, parent: r.role === 'parent' ? r.parent || {} : null, admin: false, ...(r.cr ? { cr: r.cr } : {}), ...('enrollment' in r ? { enrollment: r.enrollment, joinRequest: r.joinRequest, crRequest: r.crRequest, counts: r.counts } : {}) })
 export const useApp = () => useContext(Ctx)
 
 export function AppProvider({ children }) {
@@ -187,6 +187,7 @@ export function AppProvider({ children }) {
     if (p.classRep) p = { ...p, classRep: false } // class rep is assigned by the app, never by a profile edit
     // Phone accounts: the role comes from the server (HOD outranks teacher, teacher outranks student).
     if (session.hod) return { ...p, role: 'hod', hodBranches: session.hod.branches, teaches: undefined }
+    if (session.parent) return { ...p, role: 'parent', teaches: undefined, classRep: false }
     if (session.teacher) return { ...p, role: 'teacher', teaches: session.teacher.teaches || [], name: p.name || session.teacher.name || p.name }
     if (session.cloud) {
       const e = session.enrollment
@@ -194,7 +195,7 @@ export function AppProvider({ children }) {
     }
     if (staff) return { ...p, role: 'teacher', teaches: staff.teaches }
     return p.role === 'admin' || p.role === 'teacher' || p.role === 'organiser' ? { ...p, role: undefined, teaches: undefined } : p
-  }, [db.profiles, db.shared.staffAllowlist, session.userId, session.mode, session.phone, session.admin, session.teacher, session.hod, session.cloud, session.cr, session.enrollment])
+  }, [db.profiles, db.shared.staffAllowlist, session.userId, session.mode, session.phone, session.admin, session.teacher, session.hod, session.parent, session.cloud, session.cr, session.enrollment])
   const myData = session.userId ? db.userData[session.userId] : null
 
   /** Apply a pure shared-state transition from src/lib/*. Returns the result. */
@@ -306,7 +307,7 @@ export function AppProvider({ children }) {
 
 export function profileCompletion(p) {
   if (!p) return { pct: 0, missing: [] }
-  if (['teacher', 'admin', 'organiser', 'hod'].includes(p.role)) return { pct: p.name?.trim() ? 100 : 50, missing: p.name?.trim() ? [] : ['name'] }
+  if (['teacher', 'admin', 'organiser', 'hod', 'parent'].includes(p.role)) return { pct: p.name?.trim() ? 100 : 50, missing: p.name?.trim() ? [] : ['name'] }
   const checks = [['name', !!p.name?.trim()], ['year, branch and division', !!(p.year && p.branchId && p.division)], ['roll number', !!p.roll], ['interests', (p.interests || []).length > 0], ['subjects', (p.subjects || []).length > 0]]
   const missing = checks.filter(([, ok]) => !ok).map(([k]) => k)
   return { pct: Math.round(((checks.length - missing.length) / checks.length) * 100), missing }

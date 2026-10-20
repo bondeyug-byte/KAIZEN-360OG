@@ -5,6 +5,7 @@ import Icon from '../components/Icon.jsx'
 import AudiencePicker from '../components/AudiencePicker.jsx'
 import { FilePicker, ResourceViewer, ReviewList, TeacherChallenges } from './Challenges.jsx'
 import AttendanceDesk from './AttendanceDesk.jsx'
+import { AttendanceTaker, MarksManager, AlertsManager, ParentLinkRequests } from '../components/Records.jsx'
 import { TimetableSchedule, JoinRequests, CrRequests, InstructionsInbox, Composer as CloudComposer, MyPosts as CloudPosts, ReminderForm, Reminders, Roster, StaffTimetable } from '../components/CloudPortal.jsx'
 import { KIND, STATUS, SUBST, createPost, updatePost, setPostStatus, sentBy, subsFor, reviewAssignment, allowedDivisions, recipients, isAdmin } from '../lib/posts.js'
 import { postChallenge, setChallengeStatus, submissionsFor, SUB } from '../lib/challenges.js'
@@ -34,8 +35,8 @@ function CloudTeacher({ query }) {
   const t = session.teacher || {}
   const c = session.counts || {}
   const divisions = t.divisions || [...new Set((t.teaches || []).map((x) => x.division))]
-  const tabs = [['joins', `Join requests${c.pendingJoins ? ` (${c.pendingJoins})` : ''}`], ['cr', `CR requests${c.pendingCr ? ` (${c.pendingCr})` : ''}`], ['instructions', `Instructions from HOD${c.openInstructions ? ` (${c.openInstructions})` : ''}`],
-    ['send', 'Send to classes'], ['sent', 'Sent'], ['reminder', 'Reminders'], ...(t.canPublishTimetable ? [['timetable', 'Timetable Schedule']] : []), ['tt', 'View timetables'], ['roster', 'Class lists']]
+  const tabs = [['attendance', 'Attendance'], ['marks', 'Marks'], ['joins', `Join requests${c.pendingJoins ? ` (${c.pendingJoins})` : ''}`], ['cr', `CR requests${c.pendingCr ? ` (${c.pendingCr})` : ''}`], ['instructions', `Instructions from HOD${c.openInstructions ? ` (${c.openInstructions})` : ''}`],
+    ['send', 'Send to classes'], ['sent', 'Sent'], ['reminder', 'Reminders'], ...(t.canPublishTimetable ? [['timetable', 'Timetable Schedule']] : []), ['tt', 'View timetables'], ['roster', 'Class lists'], ['alerts', 'Attendance alerts'], ['parents', 'Parents']]
   const [tab, setTab] = useState(tabs.some((x) => x[0] === query.tab) ? query.tab : 'joins')
   useEffect(() => { if (query.tab) setTab(query.tab) }, [query.tab])
   return (
@@ -51,6 +52,10 @@ function CloudTeacher({ query }) {
       {tab === 'timetable' && <TimetableSchedule />}
       {tab === 'tt' && <StaffTimetable />}
       {tab === 'roster' && <Roster />}
+      {tab === 'attendance' && <AttendanceTaker />}
+      {tab === 'marks' && <MarksManager />}
+      {tab === 'alerts' && <AlertsManager />}
+      {tab === 'parents' && <ParentLinkRequests />}
     </div>
   )
 }

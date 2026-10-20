@@ -41,7 +41,7 @@ export function adoptAccount(db, r, phone, emptyUserData) {
     ? Object.values(db.profiles).find((p) => p && p.authMethod === 'minimoth' && p.id !== uid && last10(p.phone) === last10(phone))
     : null
   const profile = { ...(legacy ? syncableProfile(legacy) : syncableProfile(r.profile)), id: uid, phone, phoneVerified: true, authMethod: 'minimoth', demo: false }
-  if (!profile.name && r.account.name) profile.name = r.account.name
+  if (!profile.name) profile.name = r.account.name || '' // always a string (a new account has no name yet)
   const data = !isEmpty(r.data) ? r.data : (legacy && db.userData[legacy.id]) || emptyUserData()
   return {
     uid, migrated: !!legacy,

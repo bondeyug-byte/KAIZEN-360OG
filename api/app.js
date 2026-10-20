@@ -7,6 +7,7 @@ const access = require('./_access');
 const { can, allowedDivisions } = require('./_policy');
 const tt = require('./_timetable');
 const db = require('./_db');
+const records = require('./_records');
 
 const MAX_PROFILE = 8 * 1024, MAX_DATA = 200 * 1024, MAX_FILE = 3 * 1024 * 1024, PAGE = 50;
 const PROTECTED = ['id', 'role', 'roles', 'teaches', 'phone', 'phoneVerified', 'authMethod', 'demo', 'classRep', 'academicHistory', 'admin', 'teacher', 'hod'];
@@ -57,7 +58,7 @@ async function getMe(who) {
   return {
     account: { id: who.account.id, name: who.account.name, createdAt: who.account.created_at },
     profile: state.profile, data: state.data, version: state.version, updatedAt: state.updated_at,
-    role: who.base, hod: who.base === 'hod' ? { branches: who.hodBranches } : null, teacher: who.teacher,
+    role: who.base, hod: who.base === 'hod' ? { branches: who.hodBranches } : null, teacher: who.teacher, parent: who.base === 'parent' ? { children: who.parentOf.length } : null,
     cr: who.crDivisions.filter((d) => who.enrollment && who.enrollment.division_code === d),
     enrollment: who.enrollment, joinRequest: joinRequest || null, crRequest: crRequest || null,
     counts: { pendingJoins, pendingCr, openInstructions }, admin: false,
@@ -88,7 +89,7 @@ async function putMe(who, req) {
 async function catalog(who) {
   const branches = await db.q('select code, name from branches where active order by name');
   const years = await db.q('select id, label, calendar, level from academic_years where active order by level, calendar');
-  const flags = (code) => ({ post: can(who, 'post.create', { division: code }), notice: can(who, 'notice.create', { division: code }), publish: can(who, 'timetable.publish', { division: code }), review: can(who, 'join.decide', { division: code }) });
+  const flags = (code) => ({ post: can(who, 'post.create', { division: code }), notice: can(who, 'notice.create', { division: code }), publish: can(who, 'timetable.publish', { division: code }), review: can(who, 'join.decide', { division: code }), record: can(who, 'attendance.record', { division: code }), alertPublish: can(who, 'alert.publish', { division: code }), parents: can(who, 'parent.link.decide', { division: code }) });
   const divisions = [...who.divisions.values()].filter((d) => d.year_id).sort((a, b) => a.code.localeCompare(b.code)).map((d) => ({ code: d.code, name: d.name, branch_code: d.branch_code, year_id: d.year_id, confirmed: d.confirmed, can: flags(d.code) }));
   return { branches, years, divisions };
 }
@@ -636,6 +637,8 @@ const ROUTES = {
   'POST reminders': createReminder, 'GET reminders': listReminders, 'DELETE reminders': deleteReminder,
   'POST timetable-preview': ttPreview, 'POST timetable-publish': ttPublish, 'POST timetable-rollback': ttRollback,
   'GET timetable-versions': ttVersions, 'GET timetable': timetable,
+  // parent portal, attendance, marks, alerts, events (api/_records.js)
+  ...records({ db, can, need, bad, forbidden, notFound, conflict, body, txt, isUuid, division, limit, branchOf, displayName, allowedDivisions, normalizePhone, mask }),
 };
 
 module.exports = async (req, res) => {

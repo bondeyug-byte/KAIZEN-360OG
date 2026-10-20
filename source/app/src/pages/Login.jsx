@@ -8,8 +8,8 @@ import * as auth from '../lib/auth.js'
 import { CLASS_LABEL } from '../data/config.js'
 import { demoIdsFor, TRUSTED_DEMO, ROLE_LABEL } from '../lib/roles.js'
 
-const PORTALS = [['student', 'Student'], ['teacher', 'Teacher'], ['hod', 'HOD'], ['organiser', 'Council / Club']]
-const roleFromHash = () => { const r = new URLSearchParams((window.location.hash.split('?')[1]) || '').get('role'); return ['student', 'teacher', 'hod', 'organiser', 'admin'].includes(r) ? r : 'student' }
+const PORTALS = [['student', 'Student'], ['teacher', 'Teacher'], ['hod', 'HOD'], ['parent', 'Parent']]
+const roleFromHash = () => { const r = new URLSearchParams((window.location.hash.split('?')[1]) || '').get('role'); return ['student', 'teacher', 'hod', 'parent', 'organiser', 'admin'].includes(r) ? r : 'student' }
 
 export default function Login({ next = '/' }) {
   const { server, completeOtpLogin, demoLogin, session, db, pushToast } = useApp()
@@ -45,7 +45,7 @@ export default function Login({ next = '/' }) {
     if (!p) { setError('Enter a 10-digit Indian mobile number starting with 6–9.'); return }
     setBusy(true)
     try {
-      const r = await auth.sendOtp(p, portal === 'teacher' || portal === 'hod' ? portal : undefined)
+      const r = await auth.sendOtp(p, portal === 'teacher' || portal === 'hod' || portal === 'parent' ? portal : undefined)
       const t = Date.now(); setTick(t)
       setSentTo({ phone: r.phone || p, expiresAt: r.expires_at, otpId: r.otp_id, sentAt: t }); setDelivery(null)
       setStep('code'); setCode('')
@@ -61,7 +61,7 @@ export default function Login({ next = '/' }) {
       const r = await auth.verifyOtp(sentTo.phone, code)
       completeOtpLogin(r)
       // The server decides the role; each role lands on its own portal.
-      window.location.hash = r.role === 'hod' ? '/hod' : r.role === 'teacher' ? '/' : next
+      window.location.hash = r.role === 'hod' ? '/hod' : r.role === 'parent' ? '/parent' : r.role === 'teacher' ? '/' : next
     } catch (err) {
       setError(err.message)
       if (['OTP_NOT_FOUND', 'VERIFY_RATE_LIMITED'].includes(err.code)) setStep('phone')
@@ -88,6 +88,7 @@ export default function Login({ next = '/' }) {
         <div role="tablist" aria-label="Choose your portal" className="grid grid-cols-2 gap-1 rounded-xl bg-sand p-1 sm:grid-cols-4">
           {PORTALS.map(([r, l]) => <button key={r} role="tab" aria-selected={portal === r} onClick={() => { setPortal(r); history.replaceState(null, '', `#/login?role=${r}`) }} className={cx('press min-h-[42px] rounded-lg px-2 text-[13.5px] font-semibold', portal === r ? 'bg-surface text-ink shadow-card' : 'text-muted hover:text-ink')}>{l}</button>)}
         </div>
+        <p className="-mt-2 text-right text-[12.5px]">{portal === 'organiser' ? <button className="font-semibold text-maroon" onClick={() => { setPortal('student'); history.replaceState(null, '', '#/login?role=student') }}>← Back to the four portals</button> : <button className="font-semibold text-maroon" onClick={() => { setPortal('organiser'); history.replaceState(null, '', '#/login?role=organiser') }}>Council / Club event desk (demo) →</button>}</p>
         {session.message && <p role="alert" className="rounded-xl bg-[#FBEDEA] px-3 py-2 text-sm text-bad">{session.message}</p>}
 
         {portal !== 'organiser' && <div className={cx('rounded-xl border border-line bg-surface p-5', !realAvailable && 'opacity-95')}>
@@ -124,10 +125,11 @@ export default function Login({ next = '/' }) {
               </div>
             </form>
           )}
-          <p className="mt-3 text-xs text-muted">{portal === 'teacher' ? 'Only numbers your HOD has added can open the Teacher portal. ' : portal === 'hod' ? 'Only the number registered for your branch can open the HOD portal. ' : ''}OTP confirms you control this phone number. It does not confirm college enrolment.</p>
+          <p className="mt-3 text-xs text-muted">{portal === 'teacher' ? 'Only numbers your HOD has added can open the Teacher portal. ' : portal === 'hod' ? 'Only the number registered for your branch can open the HOD portal. ' : portal === 'parent' ? 'Only numbers your child added and their class teacher confirmed can open the Parent portal. ' : ''}OTP confirms you control this phone number. It does not confirm college enrolment.</p>
         </div>}
 
-        {portal !== 'hod' && (
+        {portal === 'parent' && <p className="rounded-xl border border-line bg-surface p-4 text-[13.5px] text-muted"><b className="text-ink">No demo parent account.</b> The Parent portal shows a real student's attendance, marks and alerts, so it only opens for a phone number the college has confirmed. Your child adds your number under College portal → My class, and their class teacher confirms it.</p>}
+        {portal !== 'hod' && portal !== 'parent' && (
         <div className="rounded-xl border border-dashed border-[#C9B6DA] bg-[#F7F2FB] p-5">
           <div className="mb-1 flex items-center gap-2"><b className="text-[15px]">Demo sign-in · {ROLE_LABEL[portal]}</b><Badge tone="demo">Simulated · no OTP</Badge></div>
           <p className="mb-3 text-sm text-muted">Fictional sample accounts for presentations. Each account’s role is fixed by the app, not by anything you can edit; permissions are checked inside the app only and need a server in production.</p>

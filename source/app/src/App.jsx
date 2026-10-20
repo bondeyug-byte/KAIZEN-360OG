@@ -19,6 +19,7 @@ import Organiser from './pages/Organiser.jsx'
 import TeacherPortal from './pages/TeacherPortal.jsx'
 import Portal from './pages/Portal.jsx'
 import Hod from './pages/Hod.jsx'
+import ParentPortal from './pages/ParentPortal.jsx'
 import Classwork from './pages/Classwork.jsx'
 import AttendancePage from './pages/Attendance.jsx'
 import Canteen from './pages/Canteen.jsx'
@@ -72,8 +73,8 @@ export default function App() {
   }
 
   const pages = {
-    '/': me?.role === 'hod' ? <Hod query={loc.query} /> : me?.role === 'organiser' ? <Organiser query={loc.query} /> : me?.role === 'teacher' ? <TeacherPortal query={loc.query} /> : me?.role === 'admin' ? <Admin /> : <Dashboard query={loc.query} />,
-    '/teacher': <TeacherPortal query={loc.query} />, '/portal': <Portal query={loc.query} />, '/hod': <Hod query={loc.query} />, '/classwork': <Classwork query={loc.query} />, '/attendance': <AttendancePage />, '/canteen': <Canteen query={loc.query} />, '/notes': <Notes query={loc.query} />, '/admin': <Admin />, '/organiser': <Organiser query={loc.query} />, '/notifications': <NotificationsPage />, '/planner': <Planner query={loc.query} />, '/rides': <Rides query={loc.query} />, '/challenges': <Challenges query={loc.query} />, '/directory': <Directory />,
+    '/': me?.role === 'parent' ? <ParentPortal query={loc.query} /> : me?.role === 'hod' ? <Hod query={loc.query} /> : me?.role === 'organiser' ? <Organiser query={loc.query} /> : me?.role === 'teacher' ? <TeacherPortal query={loc.query} /> : me?.role === 'admin' ? <Admin /> : <Dashboard query={loc.query} />,
+    '/teacher': <TeacherPortal query={loc.query} />, '/portal': <Portal query={loc.query} />, '/hod': <Hod query={loc.query} />, '/parent': <ParentPortal query={loc.query} />, '/classwork': <Classwork query={loc.query} />, '/attendance': <AttendancePage />, '/canteen': <Canteen query={loc.query} />, '/notes': <Notes query={loc.query} />, '/admin': <Admin />, '/organiser': <Organiser query={loc.query} />, '/notifications': <NotificationsPage />, '/planner': <Planner query={loc.query} />, '/rides': <Rides query={loc.query} />, '/challenges': <Challenges query={loc.query} />, '/directory': <Directory />,
     '/events': <Events query={loc.query} />, '/peer': <Peer query={loc.query} />, '/profile': <Profile query={loc.query} />, '/navigator': <NavigatorPage query={loc.query} />, '/commute': <Commute query={loc.query} />, '/about': <About />,
   }
   // Route-level permission: a page outside this role's portal is never rendered, whatever the URL says.

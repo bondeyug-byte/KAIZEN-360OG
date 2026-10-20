@@ -11,7 +11,7 @@ export const REG = {
   menu: [256, 128, 256, 128], books1: [512, 128, 256, 64], books2: [512, 192, 256, 64], screen: [768, 192, 64, 64],
   exit: [832, 0, 128, 64], wc: [960, 0, 64, 64],
   d0: [832, 64, 64, 64], d1: [896, 64, 64, 64], d2: [960, 64, 64, 64], d3: [832, 128, 64, 64], d4: [896, 128, 64, 64], d5: [960, 128, 64, 64],
-  tiles: [832, 192, 64, 64], principal: [256, 256, 256, 48], admin: [512, 256, 256, 48], exam: [768, 256, 256, 48],
+  tiles: [832, 192, 64, 64], clock: [0, 320, 64, 64], poster1: [64, 320, 96, 128], poster2: [160, 320, 96, 128], principal: [256, 256, 256, 48], admin: [512, 256, 256, 48], exam: [768, 256, 256, 48],
 }
 
 function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296) }
@@ -52,6 +52,14 @@ function drawAtlas(x) {
   { const [px, py, w, h] = REG.wc; box(REG.wc, '#2E6DB4'); text('WC', px + w / 2, py + h / 2 + 1, 26, '#FFFFFF', 800) }
   // floor-number plates for lift lobbies
   ;['G', '1', '2', '3', '4', '5'].forEach((t, i) => { const reg = REG['d' + i], [px, py, w, h] = reg; box(reg, '#2B1519'); box([px + 3, py + 3, w - 6, h - 6], '#F3E3C8'); text(t, px + w / 2, py + h / 2 + 2, 40, '#2B1519', 800) })
+  // wall clock (hands at a fixed time) and two generic lab posters
+  { const [px, py, w] = REG.clock, c = px + w / 2, cy = py + w / 2; x.fillStyle = '#2B2B2B'; x.beginPath(); x.arc(c, cy, 31, 0, 7); x.fill(); x.fillStyle = '#FAFAF5'; x.beginPath(); x.arc(c, cy, 27, 0, 7); x.fill()
+    x.fillStyle = '#2B2B2B'; for (let k = 0; k < 12; k++) { const t = k * Math.PI / 6; x.fillRect(c + 22 * Math.cos(t) - 1.5, cy + 22 * Math.sin(t) - 1.5, 3, 3) }
+    x.strokeStyle = '#2B2B2B'; x.lineWidth = 3; x.beginPath(); x.moveTo(c, cy); x.lineTo(c + 10, cy - 8); x.moveTo(c, cy); x.lineTo(c - 4, cy - 20); x.stroke() }
+  const poster = (reg, title, lines, accent) => { const [px, py, w, h] = reg; box(reg, '#FBF8F0'); box([px, py, w, 26], accent); text(title, px + w / 2, py + 13, 13, '#FFFFFF', 800)
+    lines.forEach((t, i) => text(t, px + w / 2, py + 44 + i * 18, 11, '#2B2B2B', 600)); box([px + 18, py + h - 28, w - 36, 12], accent) }
+  poster(REG.poster1, 'LAB SAFETY', ['No food or drink', 'Report damage', 'Switch off', 'when done'], '#C0392B')
+  poster(REG.poster2, 'WORK TIDY', ['Log in, log out', 'Save your work', 'Cables off', 'walkways'], '#2E6DB4')
   // washroom wall tile (used as a decal strip)
   { const [px, py, w, h] = REG.tiles; box(REG.tiles, '#B9C9C8'); x.fillStyle = '#DCE7E6'; for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) x.fillRect(px + i * 16 + 1, py + j * 16 + 1, 14, 14) }
 }

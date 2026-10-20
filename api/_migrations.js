@@ -234,5 +234,81 @@ module.exports = [
       `create index if not exists audit_log_by_branch on audit_log (branch_code, id desc)`,
     ],
   },
+  {
+    id: 4,
+    name: 'parent portal: parent links, attendance, assessments and marks, attendance alerts, college events, parent read state',
+    up: [
+      // Parent ↔ student: requested by the student, confirmed by the class teacher or HOD (the college).
+      `create table if not exists parent_links (
+        id uuid primary key default gen_random_uuid(),
+        parent_phone text not null check (parent_phone ~ '^\\+91[6-9][0-9]{9}$'),
+        student_id uuid not null references accounts(id) on delete cascade,
+        relation text not null default 'Parent',
+        status text not null default 'pending' check (status in ('pending', 'approved', 'rejected', 'revoked')),
+        requested_at timestamptz not null default now(),
+        decided_by uuid references accounts(id), decided_at timestamptz, note text not null default '')`,
+      `create unique index if not exists one_open_link on parent_links (parent_phone, student_id) where status in ('pending', 'approved')`,
+      `create index if not exists parent_links_by_phone on parent_links (parent_phone) where status = 'approved'`,
+      `create index if not exists parent_links_by_student on parent_links (student_id)`,
+      // Attendance: one session per division + subject + date + start time; one mark per student.
+      `create table if not exists attendance_sessions (
+        id uuid primary key default gen_random_uuid(),
+        division_code text not null references divisions(code),
+        subject text not null, on_date date not null, start_time text not null default '',
+        taken_by uuid not null references accounts(id), taken_by_name text not null default '',
+        created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+        unique (division_code, subject, on_date, start_time))`,
+      `create index if not exists attendance_sessions_by_division on attendance_sessions (division_code, on_date desc)`,
+      `create table if not exists attendance_marks (
+        session_id uuid not null references attendance_sessions(id) on delete cascade,
+        student_id uuid not null references accounts(id) on delete cascade,
+        present boolean not null,
+        primary key (session_id, student_id))`,
+      `create index if not exists attendance_marks_by_student on attendance_marks (student_id)`,
+      // Assessments: drafts stay private; parents and students see only published ones.
+      `create table if not exists assessments (
+        id uuid primary key default gen_random_uuid(),
+        division_code text not null references divisions(code),
+        subject text not null, name text not null, term text not null default '', held_on date,
+        max_marks numeric not null check (max_marks > 0 and max_marks <= 1000),
+        status text not null default 'draft' check (status in ('draft', 'published')),
+        created_by uuid not null references accounts(id), created_by_name text not null default '',
+        published_at timestamptz, updated_at timestamptz not null default now(), created_at timestamptz not null default now())`,
+      `create index if not exists assessments_by_division on assessments (division_code, status, held_on desc)`,
+      `create table if not exists assessment_marks (
+        assessment_id uuid not null references assessments(id) on delete cascade,
+        student_id uuid not null references accounts(id) on delete cascade,
+        obtained numeric, absent boolean not null default false, grade text not null default '', remark text not null default '',
+        updated_at timestamptz not null default now(),
+        primary key (assessment_id, student_id))`,
+      `create index if not exists assessment_marks_by_student on assessment_marks (student_id)`,
+      // Attendance alerts (defaulter notices): teacher or HOD drafts, the branch HOD publishes.
+      `create table if not exists attendance_alerts (
+        id uuid primary key default gen_random_uuid(),
+        student_id uuid not null references accounts(id) on delete cascade,
+        division_code text not null references divisions(code),
+        subject text not null default '', title text not null, details text not null default '',
+        next_steps text not null default '', contact text not null default '',
+        status text not null default 'draft' check (status in ('draft', 'published', 'withdrawn')),
+        created_by uuid not null references accounts(id), published_by uuid references accounts(id),
+        created_at timestamptz not null default now(), updated_at timestamptz not null default now(), published_at timestamptz)`,
+      `create index if not exists attendance_alerts_by_student on attendance_alerts (student_id, status)`,
+      `create index if not exists attendance_alerts_by_division on attendance_alerts (division_code, status)`,
+      // College events published by the HOD for their branch (organiser accounts are not on the server yet).
+      `create table if not exists college_events (
+        id uuid primary key default gen_random_uuid(),
+        branch_code text not null references branches(code),
+        title text not null, description text not null default '', venue text not null default '',
+        starts_at timestamptz not null, ends_at timestamptz, registration text not null default '',
+        status text not null default 'draft' check (status in ('draft', 'published', 'cancelled')),
+        created_by uuid not null references accounts(id), created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(), published_at timestamptz)`,
+      `create index if not exists college_events_by_branch on college_events (branch_code, status, starts_at)`,
+      // What a parent has already seen (for "new since your last visit"); the parent's own state only.
+      `create table if not exists parent_seen (
+        parent_phone text not null, student_id uuid not null references accounts(id) on delete cascade,
+        seen_at timestamptz not null default now(), primary key (parent_phone, student_id))`,
+    ],
+  },
 ];
 module.exports.FE_DIVISIONS = FE_DIVISIONS;

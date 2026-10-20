@@ -101,7 +101,7 @@ async function allowed(key, max, sec) {
   catch (e) { return true; }
 }
 const clientIp = (req) => String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
-const roleSummary = async (phone) => { const r = await roleFor(phone); return { role: r.base, hod: r.hod, teacher: r.teacher, admin: false }; };
+const roleSummary = async (phone) => { const r = await roleFor(phone); return { role: r.base, hod: r.hod, teacher: r.teacher, parent: r.parent || null, admin: false }; };
 /** Role for sign-in: HOD (HOD_PHONES) outranks teacher (HOD's teacher list) outranks student. Never fails sign-in. */
 async function roleFor(phone) {
   try { return await signInRole(phone); }
@@ -175,14 +175,15 @@ module.exports = async (req, res) => {
       if (!(await allowed(`otp:${phone}`, 5, 600)) || !(await allowed(`otpip:${clientIp(req)}`, 20, 600))) {
         return fail(res, 429, 'OTP_RATE_LIMITED', 'Too many codes requested. Wait 10 minutes and try again.');
       }
-      if ((body.portal === 'teacher' || body.portal === 'hod') && !(await allowed(`probe:${clientIp(req)}`, 10, 600))) {
+      if ((body.portal === 'teacher' || body.portal === 'hod' || body.portal === 'parent') && !(await allowed(`probe:${clientIp(req)}`, 10, 600))) {
         return fail(res, 429, 'RATE_LIMITED', 'Too many attempts. Wait 10 minutes and try again.');
       }
       // Teacher and HOD tabs: only registered numbers get a code. Everyone else is told straight away.
-      if (body.portal === 'teacher' || body.portal === 'hod') {
+      if (body.portal === 'teacher' || body.portal === 'hod' || body.portal === 'parent') {
         const role = await roleFor(phone);
+        if (body.portal === 'parent' && role.base !== 'parent') return fail(res, 403, 'NOT_PARENT', 'This number isn\'t linked to a student yet. Ask your child to add your number in Campus360 (College portal → My class) and their class teacher to confirm it.');
         if (body.portal === 'hod' && role.base !== 'hod') return fail(res, 403, 'NOT_HOD', 'This number isn\'t registered as an HOD.');
-        if (body.portal === 'teacher' && role.base === 'student') {
+        if (body.portal === 'teacher' && (role.base === 'student' || role.base === 'parent')) {
           let anyTeacher = false;
           try { anyTeacher = (await dbmod.q('select 1 from teacher_whitelist where active limit 1')).length > 0; } catch (e) { /* no database */ }
           if (!anyTeacher) return fail(res, 403, 'TEACHERS_NOT_CONFIGURED', 'No teacher numbers are set up yet. The HOD adds them in the HOD portal.');

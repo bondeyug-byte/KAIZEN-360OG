@@ -41,6 +41,14 @@ const PERSONAL = { label: 'Personal', items: [
 ] }
 /** Each role gets its own navigation; the route guard in App.jsx enforces the same lists. */
 const ROLE_NAV = {
+  parent: [
+    { label: 'Family', items: [{ path: '/parent', label: 'Parent portal', icon: 'user', keywords: 'parent child attendance marks alerts events notices' }] },
+    { label: 'Campus', items: [
+      { path: '/navigator', label: '3D Campus Explorer', icon: 'cube', keywords: 'map navigator rooms route' },
+      { path: '/commute', label: 'Trains & buses', icon: 'train', keywords: 'commute local train bus journey' },
+    ] },
+    { label: 'Personal', items: [{ path: '/profile', label: 'My Profile', icon: 'user', keywords: 'profile account' }] },
+  ],
   hod: [
     { label: 'Department', items: [{ path: '/', label: 'HOD portal', icon: 'shield', keywords: 'hod teachers instructions join requests class reps audit send' }] },
     { label: 'Campus', items: [
@@ -72,6 +80,7 @@ const ROLE_NAV = {
   ],
 }
 const MOBILE_BY_ROLE = {
+  parent: [{ path: '/parent', label: 'My child', icon: 'user' }, { path: '/navigator', label: '3D map', icon: 'cube' }, { path: '/profile', label: 'Profile', icon: 'user' }],
   hod: [{ path: '/', label: 'HOD', icon: 'shield' }, { path: '/navigator', label: '3D map', icon: 'cube' }, { path: '/profile', label: 'Profile', icon: 'user' }],
   student: [{ path: '/', label: 'Home', icon: 'grid' }, { path: '/planner', label: 'Academics', icon: 'book' }, { path: '/navigator', label: '3D map', icon: 'cube' }, { path: '/commute', label: 'Trains', icon: 'train' }],
   teacher: [{ path: '/', label: 'Portal', icon: 'shield' }, { path: '/challenges', label: 'Challenges', icon: 'trophy' }, { path: '/notes', label: 'Notes', icon: 'file' }, { path: '/navigator', label: '3D map', icon: 'cube' }],
@@ -132,7 +141,7 @@ export default function Layout({ route, children, full }) {
             ))}
             {(!signedIn || canAccess(me, '/navigator')) && <a href="#/navigator" className="relative mt-1 flex-none overflow-hidden rounded-2xl bg-brand-deep p-4 text-white shadow-glass">
               <span aria-hidden="true" className="absolute -right-6 -top-6 h-24 w-24 rounded-full border border-white/25" /><span aria-hidden="true" className="absolute -right-2 -top-2 h-16 w-16 rounded-full border border-white/20" />
-              <small className="text-[10px] font-bold uppercase tracking-[.14em] text-lime">Your first year</small>
+              <small className="text-[10px] font-bold uppercase tracking-[.14em] text-lime">{r === 'parent' ? 'Visiting campus?' : 'Your first year'}</small>
               <b className="mt-1.5 block font-display text-[17px] leading-tight">Find your place on campus.</b>
               <span className="mt-1 block text-[12px] text-white/75">Every room, lift and staircase in 3D.</span>
               <span className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-white/35 px-2.5 py-1.5 text-[12px] font-semibold">Explore campus <Icon name="arrowUR" size={13} /></span>
@@ -143,7 +152,7 @@ export default function Layout({ route, children, full }) {
             {signedIn ? (
               <div className="flex items-center gap-2.5 rounded-xl p-1.5">
                 <a href="#/profile" aria-label="Your profile" className="press grid h-10 w-10 flex-none place-items-center rounded-xl bg-lime-soft text-[13px] font-bold text-brand">{initials(me?.name)}</a>
-                <a href="#/profile" className="min-w-0 flex-1 leading-tight"><b className="block truncate text-[13.5px] font-semibold">{me?.name || 'New student'}</b><small className="block truncate text-xs text-muted">{role}</small></a>
+                <a href="#/profile" className="min-w-0 flex-1 leading-tight"><b className="block truncate text-[13.5px] font-semibold">{me?.name || (r === 'student' ? 'New student' : ROLE_LABEL[r])}</b><small className="block truncate text-xs text-muted">{role}</small></a>
                 <button onClick={() => signOut()} aria-label="Sign out" title="Sign out" className="press grid h-8 w-8 flex-none place-items-center rounded-lg text-muted hover:bg-white hover:text-bad"><Icon name="logout" size={17} /></button>
               </div>
             ) : <a href="#/login" className="press flex min-h-[42px] items-center justify-center rounded-xl bg-brand text-[14px] font-semibold text-white hover:bg-brand-dark">Sign in</a>}

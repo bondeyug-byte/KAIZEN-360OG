@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../store/AppContext.jsx'
 import { PageHeader, Badge, Empty, Segmented, Spinner } from '../components/ui.jsx'
+import { MyRecord, MyParents } from '../components/Records.jsx'
 import { MyClass, Feed, MyTimetable, JoinRequests, Composer, ReminderForm, Reminders, Roster, MyPosts } from '../components/CloudPortal.jsx'
 
 /**
@@ -10,12 +11,13 @@ import { MyClass, Feed, MyTimetable, JoinRequests, Composer, ReminderForm, Remin
 export default function Portal({ query = {} }) {
   const { session, sync, me } = useApp()
   const cr = session.cr || []
-  const tabs = [['class', 'My class'], ['feed', 'From teachers'], ['tt', 'Timetable'], ...(cr.length ? [['cr', 'CR Tools']] : [])]
+  const tabs = [['class', 'My class'], ['feed', 'From teachers'], ['tt', 'Timetable'], ['record', 'Attendance & marks'], ...(cr.length ? [['cr', 'CR Tools']] : [])]
   const [tab, setTab] = useState(query.tab || null)
   useEffect(() => { if (query.tab) setTab(query.tab) }, [query.tab])
   const active = tabs.find((t) => t[0] === tab) ? tab : session.enrollment ? 'feed' : 'class'
   if (session.mode !== 'minimoth') return <div className="py-10"><Empty icon="lock" title="Sign in with your phone">The college portal keeps your class, notices and timetable on the college server so they appear on every device. Demo accounts can’t use it.</Empty></div>
   if (me?.role === 'teacher') return <div className="py-10"><Empty icon="shield" title="Teachers use the Teacher portal">Join requests, posting, instructions and the Timetable Schedule are in the <a className="font-semibold text-maroon underline" href="#/teacher">Teacher portal</a>.</Empty></div>
+  if (me?.role === 'parent') return <div className="py-10"><Empty icon="user" title="Open the Parent portal">Your child's record is in the <a className="font-semibold text-maroon underline" href="#/parent">Parent portal</a>.</Empty></div>
   if (me?.role === 'hod') return <div className="py-10"><Empty icon="shield" title="Open the HOD portal">Your tools are in the <a className="font-semibold text-maroon underline" href="#/hod">HOD portal</a>.</Empty></div>
   if (!session.cloud) return <div className="py-10">{sync?.status === 'loading' ? <Spinner label="Connecting to the college server" /> : <Empty icon="refresh" title="College server not reachable">{sync?.message || 'Try again in a moment.'}</Empty>}</div>
   return (
@@ -23,7 +25,8 @@ export default function Portal({ query = {} }) {
       <PageHeader title="College portal" subtitle="Your class, timetable, notices and reminders — the same on every device."
         actions={<Badge tone={session.enrollment ? 'ok' : 'warn'}>{session.enrollment ? session.enrollment.division_code : session.joinRequest?.status === 'pending' ? 'Request pending' : 'Not in a class yet'}{cr.length ? ' · Class rep' : ''}</Badge>} />
       <div className="mb-4 overflow-x-auto"><Segmented label="Portal section" value={active} onChange={setTab} options={tabs.map(([value, label]) => ({ value, label }))} /></div>
-      {active === 'class' && <MyClass />}
+      {active === 'class' && <div className="flex flex-col gap-4"><MyClass />{session.enrollment && <MyParents />}</div>}
+      {active === 'record' && <MyRecord />}
       {active === 'feed' && <Feed />}
       {active === 'tt' && <MyTimetable />}
       {active === 'cr' && <CrTools division={cr[0]} />}

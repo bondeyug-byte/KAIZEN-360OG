@@ -1,7 +1,8 @@
 // The ONE place that decides who may do what. Every API route calls can(); nothing else checks roles.
 //
 // `who` is built on the server from the verified phone + database (api/_access.js), never from the request:
-//   base           'hod' | 'teacher' | 'student'   (HOD outranks teacher, teacher outranks student)
+//   base           'hod' | 'teacher' | 'parent' | 'student'   (HOD > teacher > parent > student)
+//   parentOf       student account ids this phone is an approved parent/guardian of
 //   hodBranches    branches this HOD heads (from HOD_PHONES → hod_assignments)
 //   teacher        { divisions: [codes], canPublishTimetable } for active whitelisted teachers
 //   crDivisions    divisions where this student is an active class representative
@@ -52,6 +53,16 @@ function can(who, action, res = {}) {
     case 'audit.view': return hodOf(branch);
     case 'hod.portal': return isHod;
     case 'instruction.receive': return isTeacher;
+    // parent portal and the records it reads (parents only ever read; see api/_records.js)
+    case 'parent.link.request': return enrolledIn(d && d.code);
+    case 'parent.link.decide': return hodOf(branch) || teaches(d && d.code);
+    case 'parent.read': return who.base === 'parent' && !!res.student && (who.parentOf || []).includes(res.student);
+    case 'attendance.record':
+    case 'marks.manage':
+    case 'alert.draft': return hodOf(branch) || teaches(d && d.code);
+    case 'alert.publish':
+    case 'event.manage':
+    case 'settings.manage': return hodOf(branch);
     default: return false;
   }
 }

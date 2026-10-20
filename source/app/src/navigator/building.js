@@ -29,7 +29,7 @@ export const TYPE_LABEL = { room: 'Classroom', lab: 'Lab', wc: 'Washroom', lift:
 // The amphitheatre: an open, three-storey terrace RECESSED INTO the curved block on the courtyard side
 // (inside the curve). Floor 2 is the open deck, Floors 3 and 4 open balcony galleries over it; giant columns stand on the
 // building's own courtyard face. Nothing projects out of the building line. Arc and depth are inferred from photos.
-export const LOGGIA = { lo: 73, hi: 107, deck: [64.3, 73.8], balcony: [70, 74], floors: [2, 3, 4] }
+export const LOGGIA = { lo: 69.5, hi: 107, deck: [64.3, 73.8], balcony: [70, 74], floors: [2, 3, 4] }
 const inLoggia = (o) => o.lo >= LOGGIA.lo - 1e-6 && o.hi <= LOGGIA.hi + 1e-6
 
 const cache = []

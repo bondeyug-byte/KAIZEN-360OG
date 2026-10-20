@@ -145,8 +145,9 @@ export function liftSpecs() {
 }
 
 export class LiftSystem {
-  constructor({ floors = FLOORS, onChange } = {}) {
+  constructor({ floors = FLOORS, onChange, reducedMotion = false } = {}) {
     this.floors = floors
+    this.doorTime = reducedMotion ? 0.25 : DOOR_TIME // prefers-reduced-motion: doors snap instead of sliding
     this.onChange = onChange || (() => {})
     this.lifts = new Map(liftSpecs().map((s) => [s.id, { ...s, pos: 0, level: 0, state: 'IDLE', doorT: 0, t: 0, queue: [], from: 0, to: 0, dur: 0, hold: false, lock: false, available: true, dir: 0, calls: new Set() }]))
   }
@@ -185,7 +186,7 @@ export class LiftSystem {
           if (L.queue.length) this.depart(L)
           break
         case 'DOORS_OPENING':
-          L.doorT = Math.min(1, L.doorT + dt / DOOR_TIME); busy = true
+          L.doorT = Math.min(1, L.doorT + dt / this.doorTime); busy = true
           if (L.doorT >= 1) { L.state = 'OPEN'; L.t = 0 }
           break
         case 'OPEN':
@@ -194,7 +195,7 @@ export class LiftSystem {
           break
         case 'DOORS_CLOSING':
           if (L.hold) { L.state = 'DOORS_OPENING'; break }
-          L.doorT = Math.max(0, L.doorT - dt / DOOR_TIME); busy = true
+          L.doorT = Math.max(0, L.doorT - dt / this.doorTime); busy = true
           if (L.doorT <= 0) { L.state = 'IDLE'; if (L.queue.length) this.depart(L) }
           break
         case 'MOVING': {

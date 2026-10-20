@@ -46,13 +46,24 @@ async function teacherRecord(phone) {
   };
 }
 
+/** Student accounts this phone is an APPROVED parent/guardian of (the college confirmed the link). */
+async function parentOf(phone) {
+  return (await db.q(`select student_id from parent_links where parent_phone = $1 and status = 'approved'`, [normalizePhone(phone)])).map((r) => r.student_id);
+}
+async function isEnrolledPhone(phone) {
+  return (await db.q(`select 1 from accounts a join class_enrollments e on e.student_id = a.id and e.status = 'active' where a.phone = $1 limit 1`, [normalizePhone(phone)])).length > 0;
+}
+
 /** Role for the sign-in server (works before an account exists). */
 async function signInRole(phone) {
   await db.ensureSchema(); await syncFromEnv();
   const branches = await hodBranches(phone);
   if (branches.length) return { base: 'hod', hod: { branches }, teacher: null };
   const teacher = await teacherRecord(phone);
-  return { base: teacher ? 'teacher' : 'student', hod: null, teacher };
+  if (teacher) return { base: 'teacher', hod: null, teacher };
+  const children = await parentOf(phone)
+  if (children.length && !(await isEnrolledPhone(phone))) return { base: 'parent', hod: null, teacher: null, parent: { children: children.length } };
+  return { base: 'student', hod: null, teacher: null };
 }
 
 async function resolve(phone) {
@@ -64,13 +75,17 @@ async function resolve(phone) {
   const divisions = new Map((await db.q('select code, branch_code, year_id, name, confirmed from divisions')).map((r) => [r.code, r]));
   const branches = await hodBranches(phone);
   const teacher = branches.length ? null : await teacherRecord(phone);
-  const base = branches.length ? 'hod' : teacher ? 'teacher' : 'student';
-  let enrollment = null, crDivisions = [];
+  let base = branches.length ? 'hod' : teacher ? 'teacher' : 'student';
+  let enrollment = null, crDivisions = [], parentIds = [];
+  if (base === 'student') {
+    parentIds = await parentOf(phone);
+    if (parentIds.length && !(await isEnrolledPhone(phone))) base = 'parent'; // an enrolled student stays a student
+  }
   if (base === 'student') {
     [enrollment] = await db.q(`select division_code, year_id, approved_at from class_enrollments where student_id = $1 and status = 'active' order by approved_at desc limit 1`, [account.id]);
     crDivisions = (await db.q('select division_code from cr_assignments where student_id = $1 and active', [account.id])).map((r) => r.division_code);
   }
-  return { account, phone, base, hodBranches: branches, teacher, crDivisions, enrollment: enrollment || null, divisions };
+  return { account, phone, base, hodBranches: branches, teacher, crDivisions, enrollment: enrollment || null, divisions, parentOf: base === 'parent' ? parentIds : [] };
 }
 
-module.exports = { resolve, signInRole, teacherRecord, hodBranches, syncFromEnv };
+module.exports = { resolve, signInRole, teacherRecord, hodBranches, syncFromEnv, parentOf };

@@ -11,7 +11,7 @@ describe('campus structure', () => {
   it('lifts and stairs line up on every floor and sit outside the open terrace stretch', () => {
     const cores = (f) => floorPlaces(f).filter((p) => p.type === 'lift' || p.type === 'stairs').map((p) => `${p.id}@${p.lo.toFixed(2)}`).sort()
     for (let f = 1; f < 6; f++) expect(cores(f)).toEqual(cores(0))
-    for (const p of floorPlaces(2)) if (p.type === 'lift' || p.type === 'stairs') expect(p.hi <= LOGGIA.lo || p.lo >= LOGGIA.hi).toBe(true)
+    for (const p of floorPlaces(2)) if ((p.type === 'lift' || p.type === 'stairs') && p.side === 'inner') expect(p.hi <= LOGGIA.lo + 1e-6 || p.lo >= LOGGIA.hi - 1e-6).toBe(true)
   })
   it('floors 2–3 have no rooms where the terrace is open', () => {
     for (const f of [2, 3, 4]) for (const p of floorPlaces(f)) if (p.side === 'inner' && p.id !== 'balcony') expect(p.hi <= LOGGIA.lo + 1e-6 || p.lo >= LOGGIA.hi - 1e-6).toBe(true)

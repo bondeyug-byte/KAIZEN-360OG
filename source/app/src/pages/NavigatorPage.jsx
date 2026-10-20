@@ -23,6 +23,7 @@ export default function NavigatorPage({ query }) {
   const [travel, setTravel] = useState('student')
   const [lift, setLift] = useState(null) // lift next to (or around) the walker in walk mode
   const [notice, setNotice] = useState(null)
+  const [gl, setGl] = useState('ok') // 'ok' | 'lost' — WebGL context state
   useEffect(() => { if (scene.ok) scene.setAccess(me?.role) }, [me?.role, scene])
   useEffect(() => { if (!isStaff && travel === 'staff') setTravel('student') }, [isStaff, travel])
   useEffect(() => { if (!notice) return; const t = setTimeout(() => setNotice(null), 3500); return () => clearTimeout(t) }, [notice])
@@ -72,7 +73,8 @@ export default function NavigatorPage({ query }) {
     scene.on('nav', (n) => setNav((x) => (x ? { ...x, d: n.d, arrived: n.arrived } : x)))
     scene.on('lift', (l) => setLift(l))
     scene.on('notice', (t) => setNotice(t))
-    return () => { scene.stopNav(); scene.unmount(); ['pick', 'mode', 'floor', 'caption', 'fps', 'nav', 'tier', 'lift', 'notice'].forEach((k) => scene.on(k, null)) }
+    scene.on('context', (c) => setGl(c === 'lost' ? 'lost' : 'ok'))
+    return () => { scene.stopNav(); scene.unmount(); ['pick', 'mode', 'floor', 'caption', 'fps', 'nav', 'tier', 'lift', 'notice', 'context'].forEach((k) => scene.on(k, null)) }
   }, [scene])
   useEffect(() => { if (scene.ok) scene.setVisible(vp === '3d') }, [vp, scene])
   useEffect(() => { if (scene.ok) scene.setYou(loc) }, [loc, scene])
@@ -119,6 +121,7 @@ export default function NavigatorPage({ query }) {
       <section aria-label="Campus map" className="absolute inset-0 overflow-hidden bg-[#E9DFD5] lg:relative lg:order-2 lg:flex-1">
         <div ref={host} className={cx('absolute inset-0', vp !== '3d' && 'invisible')} />
         {vp === 'plan' && <Plan floor={floor} route={route} you={loc} heat={heat} layer={layer} scene={scene} onPick={(p) => setDest({ f: p.f, id: p.id })} selected={dest && dest.f === floor ? dest.id : null} />}
+        {gl === 'lost' && vp === '3d' && <div role="status" className="absolute inset-x-3 top-16 z-30 rounded-xl bg-ink px-4 py-3 text-center text-[13px] text-white shadow-pop">The graphics were reset by your device. Restoring the 3D view… your floor, route and position are kept. The floor plan works meanwhile.</div>}
         {!scene.ok && vp === '3d' && <div className="absolute inset-0 grid place-items-center p-6 text-center"><p><b>3D isn't available in this browser.</b><br />The floor plan still works.</p></div>}
 
         <div className="absolute left-3 top-3 z-10 flex flex-col gap-2">
@@ -133,7 +136,7 @@ export default function NavigatorPage({ query }) {
                 ['tour', 'spark', caption ? 'Stop tour' : 'Drone tour', !!caption, () => (caption ? scene.stopTour() : scene.startTour())],
                 ['night', 'star', night ? 'Day' : 'Night', night, () => { scene.setNight(!night); setNight(!night) }],
               ].map(([k, icn, label, on, fn]) => (
-                <button key={k} onClick={fn} aria-pressed={on} className={cx('press flex min-h-[36px] items-center gap-2 rounded-lg px-2.5 text-left text-[13px] font-semibold', on ? 'bg-maroon text-white' : 'text-[#3B4048] hover:bg-ground')}><Icon name={icn} size={17} /><span className="hidden sm:inline">{label}</span></button>
+                <button key={k} onClick={fn} aria-pressed={on} aria-label={label} title={label} className={cx('press flex min-h-[44px] sm:min-h-[36px] items-center gap-2 rounded-lg px-2.5 text-left text-[13px] font-semibold', on ? 'bg-maroon text-white' : 'text-[#3B4048] hover:bg-ground')}><Icon name={icn} size={17} /><span className="hidden sm:inline">{label}</span></button>
               ))}
             </div>
           )}
@@ -142,7 +145,7 @@ export default function NavigatorPage({ query }) {
         <div className="absolute right-3 top-3 z-10 flex flex-col gap-1 rounded-xl border border-line bg-surface p-1.5 shadow-lift" role="group" aria-label="Choose floor">
           <span className="pb-0.5 text-center text-[10px] font-semibold tracking-[.08em] text-muted">FLOOR</span>
           {[5, 4, 3, 2, 1, 0].map((f) => (
-            <button key={f} onClick={() => goFloor(f)} aria-label={floorName(f)} aria-pressed={floor === f && mode !== 'campus'} className={cx('press h-9 w-9 rounded-lg font-mono text-[14px] font-semibold', floor === f && mode !== 'campus' ? 'bg-maroon text-white shadow-[0_1px_2px_rgba(18,53,40,.4)]' : 'text-[#3B4048] hover:bg-ground')}>{floorShort(f)}</button>
+            <button key={f} onClick={() => goFloor(f)} aria-label={floorName(f)} aria-pressed={floor === f && mode !== 'campus'} className={cx('press h-11 w-11 rounded-lg font-mono text-[14px] font-semibold sm:h-9 sm:w-9', floor === f && mode !== 'campus' ? 'bg-maroon text-white shadow-[0_1px_2px_rgba(18,53,40,.4)]' : 'text-[#3B4048] hover:bg-ground')}>{floorShort(f)}</button>
           ))}
         </div>
 
@@ -158,7 +161,8 @@ export default function NavigatorPage({ query }) {
           <>
             <p className="absolute left-1/2 top-3 z-10 hidden -translate-x-1/2 rounded-xl bg-surface/95 px-3 py-2 text-xs shadow md:block">Walk mode · <b>W A S D</b> or arrows to move · drag to look · <b>E</b> lift · <b>Esc</b> to leave</p>
             {lift && <LiftPanel lift={lift} scene={scene} />}
-            {notice && <p role="status" className="fade-in absolute left-1/2 top-14 z-20 -translate-x-1/2 rounded-xl bg-ink px-3 py-2 text-[13px] font-semibold text-white shadow-pop">{notice}</p>}
+            <Joystick scene={scene} />
+            {notice && <p role="status" className="fade-in absolute left-1/2 top-48 z-20 -translate-x-1/2 rounded-xl bg-ink px-3 py-2 text-[13px] font-semibold text-white shadow-pop">{notice}</p>}
             <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2"><span className="absolute left-0 top-1.5 h-0.5 w-3.5 bg-white shadow" /><span className="absolute left-1.5 top-0 h-3.5 w-0.5 bg-white shadow" /></div>
             <div className="absolute bottom-[236px] right-3 z-10 grid grid-cols-3 gap-1 lg:bottom-14">
               {[['w', 'route', 'Forward', 'col-start-2'], ['arrowleft', 'back', 'Turn left', 'col-start-1 row-start-2'], ['s', 'x', 'Back', 'col-start-2 row-start-2'], ['arrowright', 'chev', 'Turn right', 'col-start-3 row-start-2']].map(([k, icn, label, pos]) => (
@@ -241,17 +245,34 @@ export default function NavigatorPage({ query }) {
   )
 }
 
+/** Virtual joystick for touch screens: drag to walk (up = forward, sideways = step left/right). */
+function Joystick({ scene }) {
+  const base = useRef(null), [knob, setKnob] = useState(null)
+  const move = (e) => {
+    const r = base.current.getBoundingClientRect(), R = r.width / 2
+    let x = (e.clientX - r.left - R) / R, y = (e.clientY - r.top - R) / R; const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m }
+    setKnob({ x, y }); scene.setStick(x, -y)
+  }
+  const end = () => { setKnob(null); scene.setStick(null) }
+  return (
+    <div ref={base} role="application" aria-label="Walk joystick: drag to move" className="absolute bottom-[236px] left-3 z-10 h-28 w-28 touch-none rounded-full border border-line bg-surface/80 shadow-lift lg:bottom-14"
+      onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); move(e) }} onPointerMove={(e) => knob && move(e)} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}>
+      <span className="pointer-events-none absolute h-11 w-11 rounded-full bg-maroon/85 shadow" style={{ left: `calc(50% - 22px + ${(knob?.x || 0) * 34}px)`, top: `calc(50% - 22px + ${(knob?.y || 0) * 34}px)` }} />
+    </div>
+  )
+}
+
 /** In-walk lift controls: call button outside, floor buttons inside, live status for both. */
 function LiftPanel({ lift: l, scene }) {
   const status = l.moving ? `Moving · passing ${floorShort(Math.round(l.level))}` : l.here ? (l.state === 'OPEN' || l.state === 'DOORS_OPENING' ? 'Doors open' : 'Here') : `At ${floorName(l.level)}`
   return (
-    <div className="absolute bottom-[236px] left-3 z-20 w-[min(260px,calc(100%-96px))] rounded-xl border border-line bg-surface/95 p-3 shadow-lift lg:bottom-14" role="group" aria-label={l.name}>
+    <div className="absolute left-1/2 top-14 z-20 w-[min(300px,calc(100%-24px))] -translate-x-1/2 rounded-xl border border-line bg-surface/95 p-3 shadow-lift" role="group" aria-label={l.name}>
       <p className="text-[13px] font-semibold">{l.name}</p>
       <p className="text-[12px] text-muted" aria-live="polite">{status}{l.queue.length ? ` · next ${l.queue.map(floorShort).join(', ')}` : ''}</p>
       {!l.allowed ? <p className="mt-2 text-[12px] font-semibold text-terra">Staff only. Use a student lift or the stairs.</p>
         : l.inside ? (
           <div className="mt-2 grid grid-cols-6 gap-1">
-            {[0, 1, 2, 3, 4, 5].map((f) => <button key={f} onClick={() => scene.liftGo(f)} aria-label={`Go to ${floorName(f)}`} aria-pressed={l.queue.includes(f)} className={cx('press h-9 rounded-lg font-mono text-[13px] font-semibold', f === l.floor && !l.moving ? 'bg-ground text-muted' : l.queue.includes(f) ? 'bg-maroon text-white' : 'border border-line bg-surface hover:bg-ground')}>{floorShort(f)}</button>)}
+            {[0, 1, 2, 3, 4, 5].map((f) => <button key={f} onClick={() => scene.liftGo(f)} aria-label={`Go to ${floorName(f)}`} aria-pressed={l.queue.includes(f)} className={cx('press h-11 rounded-lg font-mono text-[14px] font-semibold', f === l.floor && !l.moving ? 'bg-ground text-muted' : l.queue.includes(f) ? 'bg-maroon text-white' : 'border border-line bg-surface hover:bg-ground')}>{floorShort(f)}</button>)}
           </div>
         ) : <button onClick={() => scene.useLift()} className="press mt-2 min-h-[36px] w-full rounded-lg bg-maroon px-3 text-[13px] font-semibold text-white">{l.here ? 'Open doors' : 'Call lift'} <span className="opacity-70">(E)</span></button>}
     </div>

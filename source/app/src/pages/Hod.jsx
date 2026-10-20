@@ -3,12 +3,13 @@ import { useApp } from '../store/AppContext.jsx'
 import { PageHeader, Card, CardTitle, Button, Badge, Empty, Segmented, Field, inputCls, relTime, ConfirmButton } from '../components/ui.jsx'
 import { useLoad, Loading, useCatalog, DivisionPicker, JoinRequests, CrRequests, Roster, Composer, MyPosts } from '../components/CloudPortal.jsx'
 import { api } from '../lib/portal.js'
+import { AlertsManager, EventsManager, ParentLinkRequests, AttendanceThreshold } from '../components/Records.jsx'
 
 /**
  * HOD portal (separate route /hod). Only numbers in the server's HOD list reach it; every action is checked again
  * by the server against the HOD's own branch. No classroom screens: no own timetable, classes or attendance.
  */
-const TABS = [['dashboard', 'Dashboard'], ['teachers', 'Teachers'], ['instructions', 'Instructions'], ['send', 'Send to classes'], ['overrides', 'Join / CR overrides'], ['audit', 'Audit log']]
+const TABS = [['dashboard', 'Dashboard'], ['teachers', 'Teachers'], ['instructions', 'Instructions'], ['send', 'Send to classes'], ['overrides', 'Join / CR overrides'], ['alerts', 'Attendance alerts'], ['events', 'Events'], ['parents', 'Parents'], ['audit', 'Audit log']]
 export default function Hod({ query = {} }) {
   const { me, session } = useApp()
   const [tab, setTab] = useState(TABS.some((t) => t[0] === query.tab) ? query.tab : 'dashboard')
@@ -24,6 +25,9 @@ export default function Hod({ query = {} }) {
       {tab === 'send' && <div className="grid gap-4 xl:grid-cols-[1fr_1fr]"><Composer /><div><h2 className="mb-2 font-display text-[17px] font-semibold">Sent by you</h2><MyPosts /></div></div>}
       {tab === 'overrides' && <div className="flex flex-col gap-4"><JoinRequests hod title="Join requests (all divisions of your branch)" /><CrRequests /><Roster hod /></div>}
       {tab === 'audit' && <Audit />}
+      {tab === 'alerts' && <div className="flex flex-col gap-4"><AttendanceThreshold /><AlertsManager hod /></div>}
+      {tab === 'events' && <EventsManager />}
+      {tab === 'parents' && <ParentLinkRequests />}
     </div>
   )
 }

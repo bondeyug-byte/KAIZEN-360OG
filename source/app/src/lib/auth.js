@@ -8,6 +8,7 @@ export class AuthError extends Error {
 
 const FRIENDLY = {
   NOT_HOD: "This number isn't registered as an HOD. HOD numbers are set by the college on the server.",
+  NOT_PARENT: "This number isn't linked to a student yet. Your child adds your number in Campus360 (College portal → My class) and their class teacher confirms it.",
   NOT_TEACHER: "This number isn't registered for the Teacher portal. Ask the admin to register it, or sign in on the Student tab.",
   TEACHERS_NOT_CONFIGURED: 'No teachers are registered yet. Your HOD adds teachers in the HOD portal.',
   INVALID_PHONE: 'Enter a 10-digit Indian mobile number starting with 6–9.',
