@@ -136,7 +136,7 @@ module.exports = async (req, res) => {
     // GET /health: tells the page whether real OTP is available
     if (route === 'health' && method === 'GET') {
       const mode = !key ? null : key.startsWith('mm_test_') ? 'test' : key.startsWith('mm_live_') ? 'live' : null;
-      return respond(res, 200, { ok: true, configured: !!key && !!mode, mode });
+      return respond(res, 200, { ok: true, configured: !!key && !!mode, mode, teachersConfigured: !!String(process.env.TEACHER_PHONES || '').trim() });
     }
 
     if (!key) {
@@ -187,6 +187,11 @@ module.exports = async (req, res) => {
     if (route === 'send') {
       const phone = normalizePhone(body.phone);
       if (!phone) return fail(res, 422, 'INVALID_PHONE', 'Invalid phone number.');
+      // Teacher tab: only registered numbers get a code. Everyone else is told straight away.
+      if (body.portal === 'teacher' && !isAdminPhone(phone) && !teacherFor(phone)) {
+        if (!String(process.env.TEACHER_PHONES || '').trim()) return fail(res, 403, 'TEACHERS_NOT_CONFIGURED', 'No teacher numbers are set up on the server yet.');
+        return fail(res, 403, 'NOT_TEACHER', 'This number isn\'t registered for the Teacher portal.');
+      }
       const r = await minimoth('/v1/otp/send', { body: { phone } });
       if (!r.ok) return upstreamError(res, r);
       return respond(res, 200, { ok: true, phone, otp_id: r.data.otp_id, expires_at: r.data.expires_at });
