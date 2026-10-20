@@ -1,23 +1,40 @@
-import { neon } from '@neondatabase/serverless';
-import { NextResponse } from 'next/server';
-
+const { neon } = require('@neondatabase/serverless');
 const sql = neon(process.env.DATABASE_URL);
 
-export const dynamic = 'force-dynamic'; // don't cache, so new reviews show up
+module.exports = async (req, res) => {
+  try {
+    // Creates the table if it doesn't exist yet
+    await sql`CREATE TABLE IF NOT EXISTS canteen_reviews (
+      id SERIAL PRIMARY KEY,
+      name TEXT,
+      rating INT NOT NULL,
+      comment TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`;
 
-export async function GET() {
-  const rows = await sql`SELECT * FROM canteen_reviews ORDER BY created_at DESC`;
-  return NextResponse.json(rows);
-}
+    if (req.method === 'GET') {
+      const rows = await sql`SELECT * FROM canteen_reviews ORDER BY created_at DESC`;
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json(rows);
+    }
 
-export async function POST(req) {
-  const { name, rating, comment } = await req.json();
-  if (!comment || !rating) {
-    return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+    if (req.method === 'POST') {
+      let body = req.body;
+      if (typeof body === 'string') body = JSON.parse(body);
+      const { name, rating, comment } = body || {};
+      if (!comment || !rating) {
+        return res.status(400).json({ error: 'Missing fields' });
+      }
+      const rows = await sql`
+        INSERT INTO canteen_reviews (name, rating, comment)
+        VALUES (${name || 'Anonymous'}, ${Number(rating)}, ${comment})
+        RETURNING *`;
+      return res.status(200).json(rows[0]);
+    }
+
+    return res.status(405).json({ error: 'Method not allowed' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: err.message });
   }
-  const rows = await sql`
-    INSERT INTO canteen_reviews (name, rating, comment)
-    VALUES (${name || 'Anonymous'}, ${rating}, ${comment})
-    RETURNING *`;
-  return NextResponse.json(rows[0]);
-}
+};
