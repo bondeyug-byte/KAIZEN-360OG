@@ -99,6 +99,32 @@ function upstreamError(res, r, cookies) {
 
 /* ---------- handler ---------- */
 
+/* ---------- roles from server settings (never sent to the browser as a list) ---------- */
+// ADMIN_PHONES=9876543210,9123456789
+function isAdminPhone(phone) {
+  const me = normalizePhone(phone);
+  if (!me) return false;
+  return String(process.env.ADMIN_PHONES || '').split(/[,;\s]+/).some((x) => x && normalizePhone(x) === me);
+}
+// TEACHER_PHONES=9876543210=Prof. Name|D1ADA:Engineering Mathematics I,D1ADB:Engineering Mathematics I;9123456789=...
+function teacherFor(phone) {
+  const me = normalizePhone(phone);
+  if (!me) return null;
+  for (const raw of String(process.env.TEACHER_PHONES || '').split(';')) {
+    const i = raw.indexOf('=');
+    if (i < 0 || normalizePhone(raw.slice(0, i).trim()) !== me) continue;
+    const rest = raw.slice(i + 1).trim();
+    const bar = rest.indexOf('|');
+    const name = bar >= 0 ? rest.slice(0, bar).trim().slice(0, 80) : '';
+    const teaches = (bar >= 0 ? rest.slice(bar + 1) : rest).split(',').map((x) => {
+      const c = x.indexOf(':');
+      return c < 0 ? null : { division: x.slice(0, c).trim().toUpperCase(), subject: x.slice(c + 1).trim().slice(0, 80) };
+    }).filter((t) => t && /^D\d[A-Z]{2}[A-Z]$/.test(t.division) && t.subject);
+    return teaches.length ? { name, teaches } : null;
+  }
+  return null;
+}
+
 module.exports = async (req, res) => {
   const key = process.env.MINIMOTH_API_KEY;
   const route =
@@ -185,6 +211,8 @@ module.exports = async (req, res) => {
           access_token: r.data.access_token,
           expires_at: r.data.expires_at,
           identity_id: r.data.identity_id, // absent for mm_test_ keys: normal
+          admin: isAdminPhone(phone),
+          teacher: teacherFor(phone),
         },
         [cookie(REFRESH_COOKIE, encodeURIComponent(r.data.refresh_token)), phoneCookie(phone)]
       );
@@ -211,7 +239,8 @@ module.exports = async (req, res) => {
       return respond(
         res,
         200,
-        { ok: true, phone, access_token: r.data.access_token, expires_at: r.data.expires_at, identity_id: identityId },
+        { ok: true, phone, access_token: r.data.access_token, expires_at: r.data.expires_at, identity_id: identityId,
+          admin: phone ? isAdminPhone(phone) : false, teacher: phone ? teacherFor(phone) : null },
         // Both tokens rotate on every refresh: always store the new refresh token
         [cookie(REFRESH_COOKIE, encodeURIComponent(r.data.refresh_token)), ...(phone ? [phoneCookie(phone)] : [])]
       );
