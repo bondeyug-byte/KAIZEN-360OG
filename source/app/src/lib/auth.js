@@ -1,0 +1,67 @@
+// Browser side of authentication. Talks ONLY to this app's /api/auth/* endpoints
+// (the app's secure server function). The MiniMoth API key and refresh token never reach this code.
+const API = '/api/auth'
+
+export class AuthError extends Error {
+  constructor(code, message) { super(message); this.code = code }
+}
+
+const FRIENDLY = {
+  NOT_TEACHER: "This number isn't registered for the Teacher portal. Ask the admin to register it, or sign in on the Student tab.",
+  TEACHERS_NOT_CONFIGURED: 'No teacher numbers are registered yet. The admin needs to add them on the server (TEACHER_PHONES).',
+  INVALID_PHONE: 'Enter a 10-digit Indian mobile number starting with 6–9.',
+  INVALID_OTP_CODE: 'The code is 6 digits.',
+  INVALID_OTP: "That code isn't right. Check the message and try again.",
+  OTP_NOT_FOUND: 'That code has expired or was already used. Send a new one.',
+  VERIFY_RATE_LIMITED: 'Too many wrong attempts. Send a new code.',
+  OTP_RATE_LIMITED: 'Too many codes sent to this number. Wait 10 minutes and try again.',
+  SMS_FAILED: "We couldn't deliver the code. Try again in a moment.",
+  INSUFFICIENT_BALANCE: 'Sign-in is temporarily unavailable (the OTP wallet is empty).',
+  SESSION_EXPIRED: 'Your session has ended. Please sign in again.',
+  NO_SESSION: 'Not signed in.',
+  CONFIG_MISSING: 'Sign-in is not configured on the server yet (MINIMOTH_API_KEY is missing).',
+  UPSTREAM_UNREACHABLE: "Couldn't reach the sign-in service. Try again.",
+  RATE_LIMITED: 'Too many requests. Wait a moment and try again.',
+  CONFIG_INVALID: 'Sign-in is misconfigured on the server (the MiniMoth key was rejected). Use demo sign-in for now.',
+  REGION_NOT_ENABLED: 'Only Indian mobile numbers are enabled for sign-in.',
+  INTERNATIONAL_WHATSAPP_FAILED: "We couldn't deliver the code on WhatsApp. Try again.",
+  INTERNATIONAL_WHATSAPP_BLOCKED: 'This number is temporarily blocked after failed deliveries. Try later.',
+  FORBIDDEN_ORIGIN: 'Sign-in must be used from this site.',
+}
+
+async function call(path, body, method = 'POST') {
+  let res
+  try {
+    res = await fetch(API + path, {
+      method, credentials: 'same-origin',
+      headers: method === 'POST' ? { 'Content-Type': 'application/json' } : undefined,
+      body: method === 'POST' ? JSON.stringify(body || {}) : undefined,
+    })
+  } catch {
+    throw new AuthError('NETWORK', "Couldn't reach the sign-in server. Check your connection and try again.")
+  }
+  const type = res.headers.get('content-type') || ''
+  if (!type.includes('application/json')) throw new AuthError('SERVER_UNAVAILABLE', 'The sign-in server is not available here. Real OTP sign-in needs the deployed app and its secure server function.')
+  let data = null
+  try { data = await res.json() } catch { data = null }
+  if (!res.ok) throw new AuthError(data?.code || `HTTP_${res.status}`, FRIENDLY[data?.code] || data?.error || 'Something went wrong. Try again.')
+  return data
+}
+
+export function normalizePhone(input) {
+  const raw = String(input || '').replace(/[\s-]/g, '')
+  const d = raw.startsWith('+91') ? raw.slice(3) : raw
+  return /^[6-9]\d{9}$/.test(d) ? `+91${d}` : null
+}
+export const maskPhone = (p) => (p && p.length >= 13 ? `${p.slice(0, 3)} ${p.slice(3, 5)}xxxx ${p.slice(-4)}` : p || '')
+
+export async function serverAvailable() {
+  try { const r = await call('/health', null, 'GET'); return { available: true, configured: !!r.configured, mode: r.mode || null } }
+  catch (e) { return { available: false, configured: false, reason: e.message } }
+}
+export const sendOtp = (phone, portal) => call('/send', portal ? { phone, portal } : { phone })
+export const otpStatus = (otpId) => call(`/status?otp_id=${encodeURIComponent(otpId)}`, null, 'GET')
+export const verifyOtp = (phone, code) => call('/verify', { phone, code })
+export const restoreSession = () => call('/session')
+export const validateToken = (access_token) => call('/validate', { access_token })
+export const logout = (access_token) => call('/logout', { access_token })

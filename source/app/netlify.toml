@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# App uses hash routing. Functions declare their own paths: /api/auth/*, /api/assistant, /mcp.

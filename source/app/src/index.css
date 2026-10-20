@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; --ease: cubic-bezier(.2,.8,.2,1); }
+html, body, #root { min-height: 100%; }
+html, body { overflow-x: clip; } /* entry animations slide in from the side; never let them cause horizontal scroll */
+body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; color: #17251E; background: #E9F1EA; font-feature-settings: 'cv11', 'ss01'; -webkit-font-smoothing: antialiased; }
+.font-display { letter-spacing: -0.02em; }
+::selection { background: #D6F07A; }
+:focus-visible { outline: 2px solid #1E5240; outline-offset: 2px; border-radius: 6px; }
+* { scrollbar-width: thin; scrollbar-color: #C6D6C9 transparent; }
+.grid > * { min-width: 0; }
+
+/* ---------- motion (all disabled under prefers-reduced-motion) ---------- */
+.page-in { animation: pageIn .34s var(--ease) both; }
+@keyframes pageIn { from { opacity: 0; transform: translateX(18px) } to { opacity: 1; transform: none } }
+.seg-ind { transition: transform .28s var(--ease), width .28s var(--ease), height .28s var(--ease); }
+.slide-in-left { animation: slideL .3s var(--ease) both; }
+@keyframes slideL { from { opacity: 0; transform: translateX(-16px) } to { opacity: 1; transform: none } }
+.slide-in-right { animation: slideR .3s var(--ease) both; }
+@keyframes slideR { from { opacity: 0; transform: translateX(16px) } to { opacity: 1; transform: none } }
+.slide-down { animation: slideD .24s var(--ease) both; transform-origin: top; }
+@keyframes slideD { from { opacity: 0; transform: translateY(-6px) scaleY(.97) } to { opacity: 1; transform: none } }
+.sheet { transition: height .32s var(--ease); }
+.stagger > * { animation: rise .42s var(--ease) both; }
+.stagger > *:nth-child(2) { animation-delay: .04s } .stagger > *:nth-child(3) { animation-delay: .08s } .stagger > *:nth-child(4) { animation-delay: .12s }
+.stagger > *:nth-child(5) { animation-delay: .16s } .stagger > *:nth-child(6) { animation-delay: .2s } .stagger > *:nth-child(7) { animation-delay: .24s } .stagger > *:nth-child(n+8) { animation-delay: .28s }
+@keyframes rise { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+.lift { transition: transform .18s var(--ease), box-shadow .18s var(--ease), border-color .18s; }
+.lift:hover { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(23,37,30,.05), 0 14px 30px -12px rgba(18,53,40,.25); border-color: #C6D6C9; }
+.press { transition: transform .12s var(--ease), background-color .15s, border-color .15s, color .15s, box-shadow .15s; }
+.press:active { transform: scale(.97); }
+.fade-in { animation: fadeIn .2s ease-out both; }
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+.dialog-in { animation: dialogIn .26s var(--ease) both; }
+@media (min-width: 640px) { .sm\:dialog-in { animation: dialogIn .26s var(--ease) both; } }
+@keyframes dialogIn { from { opacity: 0; transform: translateY(14px) scale(.98) } to { opacity: 1; transform: none } }
+.sheet-in { animation: sheetIn .3s var(--ease) both; }
+@keyframes sheetIn { from { transform: translateY(100%) } to { transform: none } }
+.toast-in { animation: toastIn .26s var(--ease); }
+@keyframes toastIn { from { transform: translateY(10px) scale(.98); opacity: 0 } to { transform: none; opacity: 1 } }
+.flash { animation: flash 1.2s ease-out; }
+@keyframes flash { 0% { background: #E0EEE2 } 100% { background: transparent } }
+.pop { animation: pop .38s cubic-bezier(.2,.9,.3,1.35); }
+@keyframes pop { 0% { transform: scale(.9); opacity: .4 } 100% { transform: scale(1); opacity: 1 } }
+.bar-grow { transition: width .7s var(--ease); }
+.bar-in { animation: barIn .9s var(--ease) both; transform-origin: left; }
+@keyframes barIn { from { transform: scaleX(0) } to { transform: scaleX(1) } }
+.nav-ind { transition: transform .25s var(--ease), opacity .2s; }
+.orb { animation: orb 2.8s ease-in-out infinite; }
+@keyframes orb { 0%, 100% { box-shadow: 0 0 0 0 rgba(122,31,53,.28), 0 12px 28px -8px rgba(122,31,53,.55) } 50% { box-shadow: 0 0 0 10px rgba(122,31,53,0), 0 12px 28px -8px rgba(122,31,53,.55) } }
+.wave i { display: inline-block; width: 3px; margin: 0 1.5px; border-radius: 2px; background: currentColor; animation: wave 1s ease-in-out infinite; }
+.wave i:nth-child(2) { animation-delay: .12s } .wave i:nth-child(3) { animation-delay: .24s } .wave i:nth-child(4) { animation-delay: .36s } .wave i:nth-child(5) { animation-delay: .48s }
+@keyframes wave { 0%, 100% { height: 5px } 50% { height: 16px } }
+.shimmer { background: linear-gradient(90deg, #F2EDE8 25%, #FAF7F4 37%, #F2EDE8 63%); background-size: 400% 100%; animation: shimmer 1.3s ease infinite; }
+@keyframes shimmer { 0% { background-position: 100% 50% } 100% { background-position: 0 50% } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ---------- form controls ---------- */
+input[type=range] { accent-color: #1E5240; }
+input[type=checkbox], input[type=radio] { accent-color: #1E5240; }
+
+/* ---------- maps & plan ---------- */
+.leaflet-container { font: inherit; border-radius: .75rem; }
+.leaflet-popup-content-wrapper { border-radius: 10px; box-shadow: 0 12px 28px -10px rgba(31,35,41,.3); }
+.c360-pin { width: 18px; height: 18px; border-radius: 9px; border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); transition: transform .15s; }
+.c360-pin:hover { transform: scale(1.2); }
+svg.nolabels .lbl { display: none; }
+.sp { cursor: pointer; }
+.sp:hover { filter: brightness(0.94); }
+.pulse { transform-box: fill-box; transform-origin: center; animation: pulse 1.6s ease-out infinite; }
+@keyframes pulse { from { transform: scale(1); opacity: .7 } to { transform: scale(3.2); opacity: 0 } }
+
+.map-fallback { background-color: #F4F0EB; background-image: linear-gradient(#E9E2DA 1px, transparent 1px), linear-gradient(90deg, #E9E2DA 1px, transparent 1px); background-size: 32px 32px; }
+.map-fallback .leaflet-tile-pane { display: none; }
+.map-fallback .leaflet-container { background: transparent; }
+
+/* ---------- green glass theme ---------- */
+.app-bg { background: #E9F1EA; position: relative; isolation: isolate; }
+.app-bg::before { content: ''; position: fixed; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(233,241,234,.86), rgba(233,241,234,.94)), url(./assets/campus-blur.jpg) center / cover no-repeat; }
+.glass { background: rgba(255,255,255,.72); -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2); border: 1px solid rgba(255,255,255,.75); }
+.glass-dark { background: rgba(18,53,40,.55); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.22); }
+.glass-btn { background: rgba(255,255,255,.16); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.45); color: #fff; }
+.glass-btn:hover { background: rgba(255,255,255,.26); }
+@media (prefers-reduced-transparency: reduce) { .glass { background: #fff } .glass-dark { background: #123528 } }

@@ -1,0 +1,1 @@
+{ "private": true, "scripts": { "test": "node phase1.test.cjs" }, "devDependencies": { "@electric-sql/pglite": "0.2.17", "@neondatabase/serverless": "0.10.4" } }

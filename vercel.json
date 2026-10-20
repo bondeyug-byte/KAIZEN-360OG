@@ -1,5 +1,12 @@
 {
   "rewrites": [
-    { "source": "/api/auth/:route", "destination": "/api/auth?route=:route" }
+    {
+      "source": "/api/auth/:route",
+      "destination": "/api/auth?route=:route"
+    },
+    {
+      "source": "/api/app/:route",
+      "destination": "/api/app?route=:route"
+    }
   ]
 }
