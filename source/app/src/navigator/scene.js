@@ -14,6 +14,7 @@ import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { D, H, FLOORS, CR, AY, P2, floorPlaces, placeAt, posAt, doorAngle, floorName , LOGGIA } from './building.js'
+import { RISE, R1, R2, TREAD, TREAD2, ENTRY, MID, stairCores, coreAt, rampHeight, landingLevel, stairMove, stairPathAt, LiftSystem, liftAllowed, liftSpecs } from './vertical.js'
 
 const ARM_LEVELS = 8, ARM_LEN = 36, ARM_W = 24
 // Amphitheatre = open two-storey terrace recessed INTO the curve (see LOGGIA in building.js). Nothing projects
@@ -60,6 +61,41 @@ function merged(list, mat, { cast = true, receive = true } = {}) {
   m.castShadow = cast; m.receiveShadow = receive
   m.matrixAutoUpdate = false; m.updateMatrix()
   return m
+}
+/** A floor plate (sector) with vertical openings cut out: stairwells and lift shafts. */
+function plateG(r1, r2, a1, a2, h, y, hex, holes) {
+  const hs = holes.filter((o) => o.r2 > r1 && o.r1 < r2 && o.hi > a1 && o.lo < a2)
+  if (!hs.length) return [sectorG(r1, r2, a1, a2, h, y, hex)]
+  // One shape with the openings as holes, arcs sampled at ~1.5° so small openings cost only a few triangles.
+  const ring = (ra, rb, lo, hi) => {
+    const n = Math.max(1, Math.ceil((hi - lo) / 1.5)), pts = []
+    for (let i = 0; i <= n; i++) { const t = (lo + ((hi - lo) * i) / n) * D; pts.push(new THREE.Vector2(rb * Math.cos(t), rb * Math.sin(t))) }
+    for (let i = n; i >= 0; i--) { const t = (lo + ((hi - lo) * i) / n) * D; pts.push(new THREE.Vector2(ra * Math.cos(t), ra * Math.sin(t))) }
+    return pts
+  }
+  const s = new THREE.Shape(ring(r1, r2, a1, a2))
+  for (const o of hs) s.holes.push(new THREE.Path(ring(Math.max(o.r1, r1 + 0.05), Math.min(o.r2, r2 - 0.05), Math.max(o.lo, a1 + 0.05), Math.min(o.hi, a2 - 0.05)).reverse()))
+  const g = new THREE.ExtrudeGeometry(s, { depth: h, bevelEnabled: false })
+  g.rotateX(-Math.PI / 2); g.translate(0, y, 0)
+  return [colorize(g, hex)]
+}
+const CORES = stairCores(), LIFTS = liftSpecs()
+const liftR = (L) => [Math.min(L.door, L.back), Math.max(L.door, L.back)]
+/** Openings in the plate at the TOP of storey k (= floor k+1's slab / floor k's ceiling band). */
+function openings(k, { lifts = true } = {}) {
+  if (k < 0 || k >= FLOORS - 1) return []
+  const o = CORES.map((c) => ({ r1: 64, r2: 74 - ENTRY, lo: c.lo + 0.05, hi: c.hi - 0.05 }))
+  if (lifts) for (const L of LIFTS) { const [a, b] = liftR(L); o.push({ r1: a - 0.05, r2: b + 0.05, lo: L.lo, hi: L.hi }) }
+  return o
+}
+/** Unit lift cab (1 × 1 × 1, floor at y = 0, open towards +z), scaled per lift by its instance matrix. */
+function cabGeometry() {
+  const parts = [
+    [1, 0.04, 1, 0, 0.02, 0, '#8E857B'], [1, 0.03, 1, 0, 0.985, 0, '#F4EFE6'], [1, 1, 0.035, 0, 0.5, -0.4825, '#C9C1B6'],
+    [0.035, 1, 1, -0.4825, 0.5, 0, '#BDB4A8'], [0.035, 1, 1, 0.4825, 0.5, 0, '#BDB4A8'], [0.16, 1, 0.035, -0.42, 0.5, 0.4825, '#A79D90'], [0.16, 1, 0.035, 0.42, 0.5, 0.4825, '#A79D90'],
+    [0.6, 0.03, 0.02, 0, 0.36, -0.46, '#6E655B'], [0.05, 0.12, 0.02, 0.33, 0.45, 0.46, '#2B2420'],
+  ]
+  return mergeGeometries(parts.map(([w, h, d, x, y, z, c]) => boxG(w, h, d, x, y, z, 0, c)), false)
 }
 function canvasTex(w, h, draw, repeat, renderer) {
   const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h)
@@ -302,7 +338,7 @@ export class CampusScene {
     this.night = false
     this.quality = 'auto'
     this.listeners = {}
-    this.walk = { pos: new THREE.Vector3(), yaw: 0, pitch: 0, keys: {} }
+    this.walk = { pos: new THREE.Vector3(), yaw: 0, pitch: 0, keys: {}, foot: 0, zone: null, lift: null, panel: false, info: '' }
     this.flight = null; this.tour = null
     this.nav = null
     this.route = null
@@ -319,6 +355,8 @@ export class CampusScene {
     this.buildRoof()
     this.buildNightLights()
     this.buildMarkers()
+    this.role = 'student'
+    this.buildLifts()
     this.setupPicking()
     this.setupWalkInput()
     this.applyVisibility()
@@ -454,9 +492,10 @@ export class CampusScene {
     fl.inner.add(merged(inn, this.mats.vc))
     if (winIn.length) fl.inner.add(instanced(new THREE.BoxGeometry(1.5, 1.55, 0.14), this.mats.window, winIn, { cast: false }))
     // Maroon floor band (a strong horizontal line on the real facade)
+    const bh = openings(f)
     fl.top.add(merged(f === 2 || f === 3
-      ? [sectorG(63.7, 88.3, 48, TERRACE[0], 0.37, y + H - 0.62, PAL.maroon), sectorG(69.7, 88.3, TERRACE[0], TERRACE[1], 0.37, y + H - 0.62, PAL.maroon), sectorG(63.7, 88.3, TERRACE[1], 132, 0.37, y + H - 0.62, PAL.maroon)]
-      : [sectorG(63.7, 88.3, 48, 132, 0.37, y + H - 0.62, PAL.maroon)], this.mats.vc))
+      ? [...plateG(63.7, 88.3, 48, TERRACE[0], 0.37, y + H - 0.62, PAL.maroon, bh), sectorG(69.7, 88.3, TERRACE[0], TERRACE[1], 0.37, y + H - 0.62, PAL.maroon), ...plateG(63.7, 88.3, TERRACE[1], 132, 0.37, y + H - 0.62, PAL.maroon, bh)]
+      : plateG(63.7, 88.3, 48, 132, 0.37, y + H - 0.62, PAL.maroon, bh), this.mats.vc))
     // Heatmap discs
     const HEAT = [[108.75, 3], [71.25, 3], [90, f === 0 ? 3 : 2], [118, 2], [62, 2], [126, 1], [54, 1]]
     const HC = ['', '#E8D3A8', '#D27A3A', '#7A2E3B']
@@ -472,8 +511,9 @@ export class CampusScene {
     if (fl.interior) { fl.group.remove(fl.interior); fl.interior.traverse((o) => o.geometry?.dispose()) }
     const y = f * H, g = [], walls = [], gloss = [], slab = []
     const show = (p) => this.layer === 'all' || ['lobby', 'canteen', 'office', 'library', 'amphi'].includes(p.type) || (this.layer === 'vertical' ? p.type === 'lift' || p.type === 'stairs' : p.type === this.layer)
-    if (f === 2 || f === 3 || f === 4) { const r0 = f === 2 ? 74 : 70; slab.push(sectorG(64, 88, 48, TERRACE[0], 0.25, y - 0.25, PAL.slab), sectorG(r0, 88, TERRACE[0], TERRACE[1], 0.25, y - 0.25, PAL.slab), sectorG(64, 88, TERRACE[1], 132, 0.25, y - 0.25, PAL.slab)) }
-    else slab.push(sectorG(64, 88, 48, 132, 0.25, y - 0.25, PAL.slab))
+    const holes = openings(f - 1) // stairwells and lift shafts pass through every slab above the ground
+    if (f === 2 || f === 3 || f === 4) { const r0 = f === 2 ? 74 : 70; slab.push(...plateG(64, 88, 48, TERRACE[0], 0.25, y - 0.25, PAL.slab, holes), sectorG(r0, 88, TERRACE[0], TERRACE[1], 0.25, y - 0.25, PAL.slab), ...plateG(64, 88, TERRACE[1], 132, 0.25, y - 0.25, PAL.slab, holes)) }
+    else slab.push(...plateG(64, 88, 48, 132, 0.25, y - 0.25, PAL.slab, holes))
     gloss.push(sectorG(74, 78, 48, f === 0 ? 138 : 132, 0.03, y, '#F1F1EC'))
     const radial = new Set()
     const addRadial = (r1, r2, a) => { const k = r1 + ':' + a.toFixed(2); if (radial.has(k)) return; radial.add(k); walls.push(sectorG(r1, r2, a - 0.07, a + 0.07, 3.4, y, PAL.wall)) }
@@ -482,10 +522,8 @@ export class CampusScene {
     for (const p of floorPlaces(f)) {
       if (p.type === 'amphi') continue
       const vis = show(p)
-      if (p.type === 'lift') { if (vis) g.push(sectorG(p.r1 + 0.25, p.r2 - 0.25, p.lo + 0.18, p.hi - 0.18, H - 0.6, y, p.id.startsWith('lift_svc') ? PAL.liftSvc : PAL.lift)) }
-      else if (p.type === 'stairs') {
-        if (vis) { g.push(sectorG(p.r1 + 0.1, p.r2 - 0.1, p.lo + 0.05, p.hi - 0.05, 0.05, y, PAL.stairs)); for (let i = 0; i < 8; i++) g.push(sectorG(p.r1 + 0.5 + i * 1.1, p.r1 + 0.5 + (i + 1) * 1.1, p.lo + 0.35, p.hi - 0.35, 0.28 * (i + 1), y, PAL.step)) }
-      } else if (p.type === 'canteen') {
+      if (p.type === 'lift') { if (vis) this.liftShaft(LIFTS.find((L) => L.id === p.id), y, g) }
+      else if (p.type === 'stairs') { if (vis) this.stairFlights(CORES.find((c) => c.id === p.id), f, y, g) } else if (p.type === 'canteen') {
         g.push(sectorG(64.3, 87.7, 132.2, 141.8, 0.05, y, PAL.canteen))
         for (let i = 0; i < 6; i++) { const a = 134 + Math.floor(i / 3) * 4.5, q = v3(69 + (i % 3) * 6, a, 0); desks.push(boxG(2.6, 0.75, 1.2, q.x, y + 0.4, q.z, (a + 90) * D, PAL.desk)) }
       } else {
@@ -512,6 +550,66 @@ export class CampusScene {
     fl.slab = merged(slab, this.mats.vc); fl.group.add(fl.slab)
     if (this.lite) this.applyLite()
   }
+
+  /** Switchback stair for storey f → f+1: floor landing, flight 1 (lane A, inwards), mid-landing,
+   *  flight 2 (lane B, back to the door line), central wall, and guard rails where a lane leads nowhere. */
+  stairFlights(c, f, y, g) {
+    const R = (u) => 74 - u, top = f === FLOORS - 1
+    g.push(sectorG(R(ENTRY), 73.95, c.lo + 0.05, c.hi - 0.05, 0.05, y, PAL.stairs))
+    if (f === 0) g.push(sectorG(R(ENTRY) - 0.08, R(ENTRY), c.laneB[0], c.laneB[1], 1.05, y, PAL.dado)) // nothing below the ground floor
+    if (top) { g.push(sectorG(R(ENTRY) - 0.08, R(ENTRY), c.laneA[0], c.laneA[1], 1.05, y, PAL.dado)); return } // nothing above the top floor
+    for (let i = 1; i < R1; i++) { const u1 = ENTRY + (i - 1) * TREAD; g.push(sectorG(R(u1 + TREAD), R(u1), c.laneA[0], c.laneA[1], 0.2, y + i * RISE - 0.2, PAL.step)) }
+    g.push(sectorG(R(MID[1]), R(MID[0]), c.lo + 0.05, c.hi - 0.05, 0.22, y + R1 * RISE - 0.22, PAL.step))
+    for (let j = 1; j < R2; j++) { const u2 = MID[0] - (j - 1) * TREAD2; g.push(sectorG(R(u2), R(u2 - TREAD2), c.laneB[0], c.laneB[1], 0.2, y + (R1 + j) * RISE - 0.2, PAL.step)) }
+    g.push(sectorG(R(MID[0]), R(ENTRY), c.mid - 0.05, c.mid + 0.05, H - 0.25, y, PAL.wall)) // wall between the flights
+    g.push(sectorG(R(MID[1]) - 0.1, R(MID[1]), c.lo + 0.05, c.hi - 0.05, H - 0.25, y, PAL.wall)) // back wall of the landing
+  }
+  /** Lift shaft on one floor: back wall, side walls, front wall with the door opening, call buttons. */
+  liftShaft(L, y, g) {
+    const [ra, rb] = liftR(L), fr = L.door, w = L.hi - L.lo, jamb = w * 0.15
+    g.push(sectorG(L.inner ? ra - 0.1 : rb, L.inner ? ra : rb + 0.1, L.lo, L.hi, H - 0.25, y, PAL.lift))
+    g.push(sectorG(ra, rb, L.lo - 0.1, L.lo, H - 0.25, y, PAL.lift), sectorG(ra, rb, L.hi, L.hi + 0.1, H - 0.25, y, PAL.lift))
+    g.push(sectorG(fr - 0.1, fr + 0.1, L.lo, L.lo + jamb, H - 0.25, y, PAL.liftSvc), sectorG(fr - 0.1, fr + 0.1, L.hi - jamb, L.hi, H - 0.25, y, PAL.liftSvc))
+    g.push(sectorG(fr - 0.1, fr + 0.1, L.lo + jamb, L.hi - jamb, H - 0.25 - 2.35, y + 2.35, PAL.liftSvc))
+    const q = v3(fr + (L.inner ? 0.14 : -0.14), L.hi - jamb / 2, 0) // call buttons on the corridor side
+    g.push(boxG(0.12, 0.28, 0.04, q.x, y + 1.1, q.z, (L.hi - jamb / 2 + 90) * D, '#E9E3D6'))
+    g.push(boxG(0.06, 0.06, 0.05, q.x, y + 1.17, q.z, (L.hi - jamb / 2 + 90) * D, '#D9A441'), boxG(0.06, 0.06, 0.05, q.x, y + 1.03, q.z, (L.hi - jamb / 2 + 90) * D, '#D9A441'))
+  }
+  /** Moving parts: one instanced mesh for every cab, one for every landing door panel (2 draw calls in total). */
+  buildLifts() {
+    this.liftDirty = new Set()
+    this.lifts = new LiftSystem({ onChange: (L) => { this.liftDirty.add(L.id); this.invalidate() } })
+    this.liftList = [...this.lifts.lifts.values()]
+    this.liftGroup = new THREE.Group(); this.scene.add(this.liftGroup)
+    this.liftCabs = new THREE.InstancedMesh(cabGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.25, envMapIntensity: 0.6 }), this.liftList.length)
+    this.liftDoors = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: '#B8B3AB', roughness: 0.3, metalness: 0.6, envMapIntensity: 0.9 }), this.liftList.length * FLOORS * 2)
+    for (const m of [this.liftCabs, this.liftDoors]) { m.castShadow = false; m.receiveShadow = true; m.frustumCulled = false; this.liftGroup.add(m) }
+    this.liftVisMax = -1
+    this.liftList.forEach((L) => this.updateLift(L))
+  }
+  updateLift(L) {
+    const i = this.liftList.indexOf(L), o = this._lo || (this._lo = new THREE.Object3D()), [ra, rb] = liftR(L), rc = (ra + rb) / 2
+    const zero = (m, k) => { o.position.set(0, -999, 0); o.scale.set(0.0001, 0.0001, 0.0001); o.updateMatrix(); m.setMatrixAt(k, o.matrix) }
+    const vis = this.liftVisMax
+    if (L.pos > vis + 0.6) zero(this.liftCabs, i)
+    else {
+      o.position.copy(v3(rc, L.am, L.pos * H)); o.rotation.set(0, (L.am + 90) * D + (L.inner ? 0 : Math.PI), 0)
+      o.scale.set((L.hi - L.lo) * D * rc - 0.12, 2.7, rb - ra - 0.12); o.updateMatrix(); this.liftCabs.setMatrixAt(i, o.matrix)
+    }
+    const open = L.state === 'MOVING' ? 0 : L.doorT, w = (L.hi - L.lo) * 0.7, pw = w / 2, rp = L.door + (L.inner ? -0.17 : 0.17)
+    for (let f = 0; f < FLOORS; f++) for (let s = 0; s < 2; s++) {
+      const k = (i * FLOORS + f) * 2 + s
+      if (f > vis) { zero(this.liftDoors, k); continue }
+      const op = f === L.level ? open : 0, side = s ? 1 : -1
+      const a = L.am + side * (pw / 2 + op * pw * 0.92) // panels slide behind the jambs
+      o.position.copy(v3(rp, a, f * H + 1.16)); o.rotation.set(0, (a + 90) * D, 0)
+      o.scale.set(pw * D * rp + 0.02, 2.32, 0.06); o.updateMatrix(); this.liftDoors.setMatrixAt(k, o.matrix)
+    }
+    this.liftCabs.instanceMatrix.needsUpdate = true; this.liftDoors.instanceMatrix.needsUpdate = true
+  }
+  setLiftVisibility(max) { if (max === this.liftVisMax) return; this.liftVisMax = max; this.liftList.forEach((L) => this.updateLift(L)) }
+  /** Viewer's role decides which lifts they may use (students: student lifts; staff: all). */
+  setAccess(role) { this.role = role || 'student'; this.walk.liftKey = null }
 
   /** The amphitheatre: recessed Floor 2 terrace with giant columns on the courtyard face, glass bay, drum, mural. */
   buildTerrace() {
@@ -674,7 +772,7 @@ export class CampusScene {
       if (campus) { fl.group.visible = true; fl.outer.visible = fl.inner.visible = fl.top.visible = true }
       else if (m === 'walk') { fl.group.visible = i <= cf + 1; fl.outer.visible = fl.inner.visible = i <= cf; fl.top.visible = i < cf }
       else { fl.group.visible = i <= cf; fl.outer.visible = true; fl.inner.visible = i < cf; fl.top.visible = i < cf }
-      if (fl.interior) fl.interior.visible = campus ? false : m === 'walk' ? i === cf || i === cf + 1 : i === cf
+      if (fl.interior) fl.interior.visible = campus ? false : m === 'walk' ? i === cf || i === cf + 1 || (!!this.walk.zone && i === cf - 1) : i === cf
       if (fl.labels) fl.labels.visible = !campus && i === cf
       fl.heat.visible = this.heat && !campus && i === cf
     })
@@ -685,6 +783,7 @@ export class CampusScene {
     this.roof.visible = campus
     this.routeGroup.children.forEach((o) => (o.visible = campus || (m === 'walk' ? o.userData.f === cf : o.userData.f <= cf)))
     if (!campus) this.ensureLabels(cf)
+    this.setLiftVisibility(campus ? -1 : m === 'walk' ? cf + 1 : cf)
     this.shadowDirty = true; this.invalidate()
   }
 
@@ -795,7 +894,12 @@ export class CampusScene {
   setRoute(R) {
     const g = this.routeGroup
     g.children.slice().forEach((o) => { g.remove(o); o.geometry?.dispose() })
+    this.releaseNavLift()
     this.route = R && !R.same ? R : null
+    if (this.route) { // the vertical part of the route (between floors), driven through the real lift or stairs
+      const P = R.pts, i = P.findIndex((q, k) => k > 0 && q.f !== P[k - 1].f)
+      this.route.vseg = i > 0 && R.conn ? { d0: R.cum[i - 1], d1: R.cum[i], fromF: P[i - 1].f, toF: P[i].f, conn: R.conn, kind: R.mode === 'stairs' ? 'stairs' : 'lift' } : null
+    }
     this.destRing.visible = this.destPin.visible = false
     if (!this.route) { this.applyVisibility(); return }
     const tube = new THREE.MeshBasicMaterial({ color: '#1D5BA8', depthTest: false, transparent: true, opacity: 0.95 })
@@ -821,10 +925,33 @@ export class CampusScene {
     this.destRing.visible = this.destPin.visible = true
     this.applyVisibility()
   }
-  startNav(speed = 1) { if (!this.route) return; this.nav = { d: 0, playing: true, speed, arrived: false, lastEmit: 0 }; this.invalidate() }
+  startNav(speed = 1) {
+    if (!this.route) return
+    this.releaseNavLift()
+    this.nav = { d: 0, playing: true, speed, arrived: false, lastEmit: 0 }
+    const V = this.route.vseg; if (V && V.kind === 'lift') this.lifts.request(V.conn, V.fromF) // send the cab to meet you
+    this.invalidate()
+  }
+  /** Route navigation through a lift moves the real cab; through stairs the marker follows the flights. */
+  navVertical(N, p) {
+    const V = this.route.vseg; if (!V || V.d1 <= V.d0) return
+    const L = V.kind === 'lift' ? this.lifts.get(V.conn) : null
+    if (N.d > V.d0 && N.d < V.d1) {
+      const u = (N.d - V.d0) / (V.d1 - V.d0)
+      if (V.kind === 'stairs') { const q = stairPathAt(V.conn, V.fromF, V.toF, u), [x, z] = P2(q.r, q.a); p.x = x; p.y = z; p.h = q.h }
+      else if (L) { L.lock = true; L.queue = []; L.state = 'MOVING'; L.doorT = 0; L.pos = p.h / H; L.level = Math.round(L.pos); this.liftDirty.add(L.id) }
+      p.f = Math.max(0, Math.min(FLOORS - 1, Math.floor((p.h + 0.3) / H)))
+      this.navLift = L ? L.id : null
+    } else if (this.navLift) this.releaseNavLift(N.d >= V.d1)
+  }
+  releaseNavLift(arrived) {
+    const L = this.navLift && this.lifts.get(this.navLift); this.navLift = null
+    if (!L) return
+    L.lock = false; L.pos = L.level = Math.round(L.pos); L.state = arrived ? 'ARRIVE' : 'IDLE'; this.liftDirty.add(L.id)
+  }
   pauseNav(p) { if (this.nav) { this.nav.playing = !p; this.invalidate() } }
   setNavSpeed(s) { if (this.nav) this.nav.speed = s }
-  stopNav() { this.nav = null; this.marker.visible = false; this.invalidate() }
+  stopNav() { this.releaseNavLift(); this.nav = null; this.marker.visible = false; this.invalidate() }
 
   /* ---------------- tour ---------------- */
   startTour() {
@@ -857,25 +984,93 @@ export class CampusScene {
     const p = fromPlace || (this.youAt && this.youAt.f === this.floor ? floorPlaces(this.youAt.f).find((x) => x.id === this.youAt.id) : null)
     const a = p ? Math.min(131, Math.max(49, doorAngle(p))) : 90
     this.walk.pos.copy(v3(CR, a, this.floor * H + 1.65)); this.walk.yaw = a * D + Math.PI; this.walk.pitch = -0.05
+    Object.assign(this.walk, { foot: this.floor * H, zone: null, lift: null, panel: false })
     this.applyVisibility(); this.emit('mode', this.mode)
   }
   exitWalk(silent) {
     if (this.mode !== 'walk') return
     this.mode = 'floor'; this.controls.enabled = true; this.walk.keys = {}
+    if (this.walk.hold) { this.lifts.setHold(this.walk.hold, false); this.walk.hold = null }
+    Object.assign(this.walk, { zone: null, lift: null, panel: false }); this.emitLift(null)
     if (!silent) { this.viewFloor(this.floor) }
   }
   setupWalkInput() {
     const k = this.walk.keys
     this.onKeyDown = (e) => {
       if (this.mode !== 'walk' || e.target?.matches?.('input,select,textarea')) return
-      if (e.key === 'Escape') { this.exitWalk(); return }
+      if (e.key === 'Escape') { if (this.walk.panel) { this.walk.panel = false; this.walk.info = ''; return } this.exitWalk(); return }
       const key = e.key.toLowerCase()
+      if (key === 'e') { this.useLift(); e.preventDefault(); return }
+      if (this.walk.lift && /^[0-5g]$/.test(key)) { this.liftGo(key === 'g' ? 0 : +key); e.preventDefault(); return }
       if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) { k[key] = true; e.preventDefault(); this.invalidate() }
     }
     this.onKeyUp = (e) => { k[e.key.toLowerCase()] = false }
     window.addEventListener('keydown', this.onKeyDown); window.addEventListener('keyup', this.onKeyUp)
   }
   press(key, on) { this.walk.keys[key] = on; this.invalidate() }
+  /** Lift whose cab footprint contains a plan point. */
+  liftAt(r, a) { return this.liftList.find((L) => { const [ra, rb] = liftR(L); return r >= ra && r <= rb && a >= L.lo && a <= L.hi }) || null }
+  /** Lift whose landing door is within 1.5 m of the walker (corridor side). */
+  liftNear(r, a) {
+    let best = null, bd = 1.5
+    for (const L of this.liftList) {
+      const corr = L.inner ? r >= L.door - 0.05 : r <= L.door + 0.05; if (!corr) continue
+      const [x1, z1] = P2(r, a), [x2, z2] = P2(L.door, L.am), d = Math.hypot(x2 - x1, z2 - z1)
+      if (d < bd) { bd = d; best = L }
+    }
+    return best
+  }
+  ready(L) { return L.state !== 'MOVING' && !L.lock && L.doorT > 0.7 }
+  /** E key / "Use lift" button: outside → call the lift to this floor; inside → show or hide the floor buttons. */
+  useLift() {
+    if (this.mode !== 'walk') return false
+    const W = this.walk
+    if (W.lift) { W.panel = !W.panel; W.info = ''; this.invalidate(); return true }
+    const r = Math.hypot(W.pos.x, W.pos.z), a = Math.atan2(-W.pos.z, W.pos.x) / D, L = this.liftNear(r, a)
+    if (!L) return false
+    if (!liftAllowed(L.id, this.role)) { this.emit('notice', `${L.name} is for staff only. Use a student lift or the stairs.`); return false }
+    const ok = this.lifts.request(L.id, this.floor); if (ok) this.invalidate(); return ok
+  }
+  /** Floor button inside the cab. */
+  liftGo(f) {
+    const L = this.walk.lift && this.lifts.get(this.walk.lift); if (!L) return false
+    const ok = this.lifts.request(L.id, f); this.walk.panel = false; this.walk.info = ''; this.invalidate(); return ok
+  }
+  emitLift(info) { const k = info ? JSON.stringify(info) : ''; if (k === this.walk.info) return; this.walk.info = k; this.emit('lift', info) }
+  setWalkFloor(f) { if (f === this.floor) return; this.floor = f; this.applyVisibility(); this.emit('floor', f) }
+  /** One small walking step (≤ 0.2 m) with the stair, lift and doorway rules. Returns false when blocked. */
+  walkStep(dx, dz) {
+    const W = this.walk, p = W.pos
+    const from = { r: Math.hypot(p.x, p.z), a: Math.atan2(-p.z, p.x) / D }
+    const nx = p.x + dx, nz = p.z + dz
+    let to = { r: Math.max(64.6, Math.min(87.4, Math.hypot(nx, nz))), a: Math.max(48.6, Math.min(this.floor === 0 && !W.lift ? 141 : 131.4, Math.atan2(-nz, nx) / D)) }
+    const Lf = W.lift ? this.lifts.get(W.lift) : null, Lt = this.liftAt(to.r, to.a)
+    const corridor = (L, q) => (L.inner ? q.r >= L.door && q.r <= 78 : q.r <= L.door && q.r >= 74)
+    if (Lf && Lt !== Lf) { // leaving the cab: only through open doors, into the corridor
+      if (!this.ready(Lf) || !corridor(Lf, to)) return false
+      W.lift = null; W.panel = false; W.zone = null; W.foot = Lf.level * H; this.setWalkFloor(Lf.level); this.applyVisibility()
+    } else if (!Lf && Lt) { // boarding: from the corridor, doors open, lift on this floor, and allowed for this person
+      if (!corridor(Lt, from) || Lt.level !== this.floor || !this.ready(Lt)) return false
+      if (!liftAllowed(Lt.id, this.role)) { if (W.denied !== Lt.id) { W.denied = Lt.id; this.emit('notice', `${Lt.name} is for staff only. Use a student lift or the stairs.`) } return false }
+      W.lift = Lt.id; W.zone = 'lift'; this.applyVisibility()
+    } else if (!Lf && W.zone !== 'stairs') {
+      // walls you can't pass on the corridor side of a lift shaft (no other wall collision exists yet)
+      for (const L of this.liftList) { const [ra, rb] = liftR(L); if (to.a >= L.lo - 0.1 && to.a <= L.hi + 0.1 && to.r >= ra && to.r <= rb) return false }
+    }
+    if (!W.lift) {
+      const q = stairMove(from, to, W.foot)
+      if (q === from) return false
+      to = q
+      if (coreAt(to.r, to.a)) {
+        const h = rampHeight(to.r, to.a, W.foot); if (h === null) return false
+        W.foot = h
+        if (W.zone !== 'stairs') { W.zone = 'stairs'; this.applyVisibility() }
+        const lvl = landingLevel(to.r, to.a, W.foot); if (lvl !== null) this.setWalkFloor(lvl)
+      } else { if (W.zone) { W.zone = null; this.applyVisibility() } W.foot = this.floor * H }
+    }
+    p.set(to.r * Math.cos(to.a * D), p.y, -to.r * Math.sin(to.a * D))
+    return true
+  }
 
   /* ---------------- picking (math, not per-mesh raycasts) ---------------- */
   setupPicking() {
@@ -933,6 +1128,9 @@ export class CampusScene {
     requestAnimationFrame(this.loop)
     const dt = Math.min((nowMs - this.clock) / 1000, 0.08); this.clock = nowMs
     let animating = false
+    // lifts run on real time (up to 0.25 s per frame) so a slow device does not slow the ride itself
+    if (this.lifts.update(Math.min((nowMs - (this._liftClock || nowMs)) / 1000, 0.25))) animating = true
+    this._liftClock = nowMs
     // live navigation (simulated walking)
     if (this.nav && this.route) {
       const N = this.nav
@@ -941,6 +1139,7 @@ export class CampusScene {
         if (N.d >= this.route.total) { N.arrived = true; N.playing = false }
       }
       const p = posAt(this.route, N.d)
+      this.navVertical(N, p)
       this.marker.position.set(p.x, p.h + 0.7, p.y); this.marker.visible = true
       if (p.f !== this.floor && this.mode === 'floor') { this.viewFloor(p.f); this.emit('floor', p.f) }
       if (nowMs - N.lastEmit > 200 || N.arrived) { N.lastEmit = nowMs; this.emit('nav', { d: N.d, arrived: N.arrived, f: p.f }) }
@@ -957,13 +1156,27 @@ export class CampusScene {
       if (k.arrowleft) this.walk.yaw += turn
       if (k.arrowright) this.walk.yaw -= turn
       const fw = new THREE.Vector3(-Math.sin(this.walk.yaw), 0, -Math.cos(this.walk.yaw)), rt = new THREE.Vector3(Math.cos(this.walk.yaw), 0, -Math.sin(this.walk.yaw))
-      if (k.w || k.arrowup) this.walk.pos.addScaledVector(fw, sp)
-      if (k.s || k.arrowdown) this.walk.pos.addScaledVector(fw, -sp)
-      if (k.a) this.walk.pos.addScaledVector(rt, -sp)
-      if (k.d) this.walk.pos.addScaledVector(rt, sp)
-      let r = Math.hypot(this.walk.pos.x, this.walk.pos.z), a = Math.atan2(-this.walk.pos.z, this.walk.pos.x) / D
-      r = Math.max(64.6, Math.min(87.4, r)); a = Math.max(48.6, Math.min(this.floor === 0 ? 141 : 131.4, a))
-      this.walk.pos.copy(v3(r, a, this.floor * H + 1.65))
+      const W = this.walk, mv = new THREE.Vector3(), slow = W.zone ? 3 / 9 : 1 // walking pace on stairs and in lifts
+      if (k.w || k.arrowup) mv.addScaledVector(fw, sp * slow)
+      if (k.s || k.arrowdown) mv.addScaledVector(fw, -sp * slow)
+      if (k.a) mv.addScaledVector(rt, -sp * slow)
+      if (k.d) mv.addScaledVector(rt, sp * slow)
+      const n = Math.max(1, Math.ceil(mv.length() / 0.2))
+      for (let i = 0; i < n; i++) if (!this.walkStep(mv.x / n, mv.z / n)) { // blocked: try sliding along one axis
+        if (!this.walkStep(mv.x / n, 0)) this.walkStep(0, mv.z / n)
+      }
+      const r = Math.hypot(W.pos.x, W.pos.z), a = Math.atan2(-W.pos.z, W.pos.x) / D
+      const L = W.lift ? this.lifts.get(W.lift) : null
+      if (L) { W.foot = L.pos * H; const lv = Math.round(L.pos); if (lv !== this.floor && Math.abs(L.pos - lv) < 0.3) this.setWalkFloor(lv); if (L.state === 'MOVING' || L.lock) animating = true }
+      // keep the doors open while someone stands in the doorway
+      const near = L || this.liftNear(r, a), inDoor = near && (L ? Math.abs(r - near.door) < 0.8 : Math.abs(r - near.door) < 0.6 && a >= near.lo && a <= near.hi)
+      const hold = inDoor ? near.id : null
+      if (hold !== W.hold) { if (W.hold) this.lifts.setHold(W.hold, false); if (hold) this.lifts.setHold(hold, true); W.hold = hold }
+      W.pos.y = W.foot + 1.65
+      if (near) {
+        const ok = liftAllowed(near.id, this.role)
+        this.emitLift({ id: near.id, name: near.name, inside: !!L, allowed: ok, state: near.state, level: near.level, here: near.level === this.floor && near.state !== 'MOVING', moving: near.state === 'MOVING', queue: [...near.queue], panel: !!L && W.panel, floor: this.floor })
+      } else this.emitLift(null)
       this.camera.position.copy(this.walk.pos)
       this.camera.lookAt(this.walk.pos.clone().add(new THREE.Vector3(-Math.sin(this.walk.yaw) * Math.cos(this.walk.pitch), Math.sin(this.walk.pitch), -Math.cos(this.walk.yaw) * Math.cos(this.walk.pitch))))
       if (moving) animating = true
@@ -981,6 +1194,7 @@ export class CampusScene {
       this.destPin.position.y = this.destRing.position.y + 2.2 + Math.sin(t * 3) * 0.3
       animating = true
     }
+    if (this.liftDirty.size) { for (const id of this.liftDirty) this.updateLift(this.lifts.get(id)); this.liftDirty.clear(); animating = true }
     if (this.visible === false) return
     // Progressive quality: while anything moves, draw fast frames (no ambient occlusion); ~200 ms after the
     // scene settles, draw one full-quality frame. Motion stays smooth, a still view looks its best.

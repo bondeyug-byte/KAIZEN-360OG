@@ -11,7 +11,8 @@ const md = (s) => s.split('**').map((x, i) => (i % 2 ? <b key={i}>{x}</b> : x))
 const STEP_ICON = { left: 'back', right: 'chev', up: 'route', lift: 'layers', stairs: 'layers', flag: 'pin' }
 
 export default function NavigatorPage({ query }) {
-  const { db } = useApp()
+  const { db, me } = useApp()
+  const isStaff = ['teacher', 'hod', 'admin'].includes(me?.role)
   const scene = useMemo(() => getScene(), [])
   const host = useRef(null)
   const [vp, setVp] = useState(scene.ok ? '3d' : 'plan')
@@ -20,8 +21,14 @@ export default function NavigatorPage({ query }) {
   const [loc, setLocState] = useState(() => { const l = prefs.get('navLoc', { f: 0, id: 'lobby' }); return place(l.f, l.id) ? l : { f: 0, id: 'lobby' } })
   const [dest, setDest] = useState(null)
   const [travel, setTravel] = useState('student')
+  const [lift, setLift] = useState(null) // lift next to (or around) the walker in walk mode
+  const [notice, setNotice] = useState(null)
+  useEffect(() => { if (scene.ok) scene.setAccess(me?.role) }, [me?.role, scene])
+  useEffect(() => { if (!isStaff && travel === 'staff') setTravel('student') }, [isStaff, travel])
+  useEffect(() => { if (!notice) return; const t = setTimeout(() => setNotice(null), 3500); return () => clearTimeout(t) }, [notice])
   const [q, setQ] = useState('')
   const [nav, setNav] = useState(null) // { d, arrived, playing, speed }
+  const [navRoute, setNavRoute] = useState(null) // the route being followed (kept after arrival moves "You are at")
   const [caption, setCaption] = useState(null)
   const [fps, setFps] = useState(null)
   const [layer, setLayer] = useState('all')
@@ -63,7 +70,9 @@ export default function NavigatorPage({ query }) {
     scene.on('fps', (f) => setFps(f))
     scene.on('tier', (t) => setTier(t))
     scene.on('nav', (n) => setNav((x) => (x ? { ...x, d: n.d, arrived: n.arrived } : x)))
-    return () => { scene.stopNav(); scene.unmount(); ['pick', 'mode', 'floor', 'caption', 'fps', 'nav', 'tier'].forEach((k) => scene.on(k, null)) }
+    scene.on('lift', (l) => setLift(l))
+    scene.on('notice', (t) => setNotice(t))
+    return () => { scene.stopNav(); scene.unmount(); ['pick', 'mode', 'floor', 'caption', 'fps', 'nav', 'tier', 'lift', 'notice'].forEach((k) => scene.on(k, null)) }
   }, [scene])
   useEffect(() => { if (scene.ok) scene.setVisible(vp === '3d') }, [vp, scene])
   useEffect(() => { if (scene.ok) scene.setYou(loc) }, [loc, scene])
@@ -85,6 +94,9 @@ export default function NavigatorPage({ query }) {
     return () => clearTimeout(t)
   }, [route]) // eslint-disable-line
 
+  // A new destination while a route is being followed ends that navigation (the old steps no longer apply).
+  // (Arriving moves "You are at" to the destination; that must not end the arrived view, so this watches dest/travel only.)
+  useEffect(() => { if (nav) { scene.ok && scene.stopNav(); setNav(null); setNavRoute(null) } }, [dest?.f, dest?.id, travel]) // eslint-disable-line
   const goFloor = (f) => { setFloor(f); if (scene.ok) scene.setFloor(f) }
   const results = useMemo(() => {
     const t = q.trim().toLowerCase(); if (!t) return []
@@ -94,12 +106,12 @@ export default function NavigatorPage({ query }) {
 
   useEffect(() => { if (mode === 'walk') setSheet('peek') }, [mode])
   useEffect(() => { if (dest) setSheet((x) => (x === 'peek' ? 'half' : x)) }, [dest])
-  const startNav = () => { setSheet('peek'); if (!route || route.same) return; scene.ok && scene.startNav(1); setNav({ d: 0, arrived: false, playing: true, speed: 1 }); setFloor(route.A.f); scene.ok && scene.viewFloor(route.A.f) }
-  const endNav = (arrivedHere) => { scene.ok && scene.stopNav(); if (arrivedHere && route) setLoc({ f: route.B.f, id: route.B.id }); setNav(null); setDest(null) }
-  useEffect(() => { if (nav?.arrived && route) setLoc({ f: route.B.f, id: route.B.id }) }, [nav?.arrived]) // eslint-disable-line
+  const startNav = () => { setSheet('peek'); if (!route || route.same) return; scene.ok && scene.startNav(1); setNavRoute(route); setNav({ d: 0, arrived: false, playing: true, speed: 1 }); setFloor(route.A.f); scene.ok && scene.viewFloor(route.A.f) }
+  const endNav = (arrivedHere) => { scene.ok && scene.stopNav(); if (arrivedHere && navRoute) setLoc({ f: navRoute.B.f, id: navRoute.B.id }); setNav(null); setNavRoute(null); setDest(null) }
+  useEffect(() => { if (nav?.arrived && navRoute) setLoc({ f: navRoute.B.f, id: navRoute.B.id }) }, [nav?.arrived]) // eslint-disable-line
 
   const sm = route && !route.same ? routeSummary(route) : null
-  const curStep = nav && route && !route.same ? route.steps.reduce((acc, s, i) => (s.at <= nav.d + 0.01 ? i : acc), 0) : -1
+  const curStep = nav && navRoute ? navRoute.steps.reduce((acc, s, i) => (s.at <= nav.d + 0.01 ? i : acc), 0) : -1
 
   return (
     <div className="relative flex h-[calc(100dvh-57px)] flex-col lg:h-full lg:flex-row">
@@ -144,7 +156,9 @@ export default function NavigatorPage({ query }) {
         )}
         {mode === 'walk' && vp === '3d' && (
           <>
-            <p className="absolute left-1/2 top-3 z-10 hidden -translate-x-1/2 rounded-xl bg-surface/95 px-3 py-2 text-xs shadow md:block">Walk mode · <b>W A S D</b> or arrows to move · drag to look · <b>Esc</b> to leave</p>
+            <p className="absolute left-1/2 top-3 z-10 hidden -translate-x-1/2 rounded-xl bg-surface/95 px-3 py-2 text-xs shadow md:block">Walk mode · <b>W A S D</b> or arrows to move · drag to look · <b>E</b> lift · <b>Esc</b> to leave</p>
+            {lift && <LiftPanel lift={lift} scene={scene} />}
+            {notice && <p role="status" className="fade-in absolute left-1/2 top-14 z-20 -translate-x-1/2 rounded-xl bg-ink px-3 py-2 text-[13px] font-semibold text-white shadow-pop">{notice}</p>}
             <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2"><span className="absolute left-0 top-1.5 h-0.5 w-3.5 bg-white shadow" /><span className="absolute left-1.5 top-0 h-3.5 w-0.5 bg-white shadow" /></div>
             <div className="absolute bottom-[236px] right-3 z-10 grid grid-cols-3 gap-1 lg:bottom-14">
               {[['w', 'route', 'Forward', 'col-start-2'], ['arrowleft', 'back', 'Turn left', 'col-start-1 row-start-2'], ['s', 'x', 'Back', 'col-start-2 row-start-2'], ['arrowright', 'chev', 'Turn right', 'col-start-3 row-start-2']].map(([k, icn, label, pos]) => (
@@ -173,8 +187,8 @@ export default function NavigatorPage({ query }) {
           <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('c360:assistant'))} className="press inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-maroon px-3 text-[13px] font-semibold text-white lg:hidden"><Icon name="mic" size={15} />Ask</button>
           <button className="press hidden h-9 w-9 place-items-center rounded-lg border border-line text-muted hover:bg-ground hover:text-ink lg:grid" onClick={() => setPanelOpen(!panelOpen)} aria-label={panelOpen ? 'Collapse panel' : 'Expand panel'}><Icon name={panelOpen ? 'back' : 'chev'} /></button>
         </div>
-        {panelOpen && (nav ? (
-          <NavPanel route={route} nav={nav} curStep={curStep} scene={scene} setNav={setNav} onEnd={endNav} />
+        {panelOpen && (nav && navRoute ? (
+          <NavPanel route={navRoute} nav={nav} curStep={curStep} scene={scene} setNav={setNav} onEnd={endNav} />
         ) : (
           <>
             <div className="flex flex-col gap-1.5">
@@ -200,7 +214,7 @@ export default function NavigatorPage({ query }) {
             {route && !route.same && sm && (
               <section key={route.B.f + route.B.id} className="slide-in-left flex flex-col gap-3 rounded-xl border border-line bg-surface p-4 shadow-lift" aria-label="Route">
                 <div className="flex items-start justify-between gap-2"><div><p className="text-[11px] font-semibold uppercase tracking-[.08em] text-muted">Route to</p><h2 className="font-display text-[18px] font-semibold leading-tight">{route.B.name}</h2><p className="text-sm text-muted">{floorName(route.B.f)}{route.B.where ? ` · ${route.B.where}` : ''}</p></div><button aria-label="Clear route" onClick={() => setDest(null)} className="press grid h-8 w-8 flex-none place-items-center rounded-lg text-muted hover:bg-sand hover:text-ink"><Icon name="x" size={17} /></button></div>
-                <Segmented label="Change floors by" value={travel} onChange={setTravel} options={[{ value: 'student', label: 'Student lift' }, { value: 'staff', label: 'Staff lift' }, { value: 'stairs', label: 'Stairs' }]} />
+                <Segmented label="Change floors by" value={travel} onChange={setTravel} options={[{ value: 'student', label: 'Student lift' }, ...(isStaff ? [{ value: 'staff', label: 'Staff lift' }] : []), { value: 'stairs', label: 'Stairs' }]} />
                 <p className="flex flex-wrap items-baseline gap-x-2 rounded-lg bg-ground px-3 py-2"><b className="font-display text-[20px] font-semibold">{sm.t}</b> <span className="text-[13px] text-muted">{sm.meta}</span><span className="w-full text-[11.5px] text-muted">Estimated from plan distances at a typical walking pace.</span></p>
                 <ol className="stagger flex flex-col gap-2">{route.steps.map((s, i) => <li key={i} className="flex gap-2.5 text-[14px] leading-snug"><span className={cx('grid h-6 w-6 flex-none place-items-center rounded-md font-mono text-[11px] font-bold', i === route.steps.length - 1 ? 'bg-terra text-white' : 'bg-maroon-50 text-maroon ring-1 ring-maroon/15')}>{i + 1}</span><span>{md(s.text)}</span></li>)}</ol>
                 <Button onClick={startNav} icon="route">Start navigation</Button>
@@ -223,6 +237,23 @@ export default function NavigatorPage({ query }) {
           </>
         ))}
       </aside>
+    </div>
+  )
+}
+
+/** In-walk lift controls: call button outside, floor buttons inside, live status for both. */
+function LiftPanel({ lift: l, scene }) {
+  const status = l.moving ? `Moving · passing ${floorShort(Math.round(l.level))}` : l.here ? (l.state === 'OPEN' || l.state === 'DOORS_OPENING' ? 'Doors open' : 'Here') : `At ${floorName(l.level)}`
+  return (
+    <div className="absolute bottom-[236px] left-3 z-20 w-[min(260px,calc(100%-96px))] rounded-xl border border-line bg-surface/95 p-3 shadow-lift lg:bottom-14" role="group" aria-label={l.name}>
+      <p className="text-[13px] font-semibold">{l.name}</p>
+      <p className="text-[12px] text-muted" aria-live="polite">{status}{l.queue.length ? ` · next ${l.queue.map(floorShort).join(', ')}` : ''}</p>
+      {!l.allowed ? <p className="mt-2 text-[12px] font-semibold text-terra">Staff only. Use a student lift or the stairs.</p>
+        : l.inside ? (
+          <div className="mt-2 grid grid-cols-6 gap-1">
+            {[0, 1, 2, 3, 4, 5].map((f) => <button key={f} onClick={() => scene.liftGo(f)} aria-label={`Go to ${floorName(f)}`} aria-pressed={l.queue.includes(f)} className={cx('press h-9 rounded-lg font-mono text-[13px] font-semibold', f === l.floor && !l.moving ? 'bg-ground text-muted' : l.queue.includes(f) ? 'bg-maroon text-white' : 'border border-line bg-surface hover:bg-ground')}>{floorShort(f)}</button>)}
+          </div>
+        ) : <button onClick={() => scene.useLift()} className="press mt-2 min-h-[36px] w-full rounded-lg bg-maroon px-3 text-[13px] font-semibold text-white">{l.here ? 'Open doors' : 'Call lift'} <span className="opacity-70">(E)</span></button>}
     </div>
   )
 }
