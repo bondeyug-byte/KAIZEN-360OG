@@ -42,6 +42,17 @@ no attendance cut-off is assumed (only the HOD's setting). Every write is in the
 (an enrolled student never becomes a parent). Not built: organiser accounts on the server (events come from the HOD), uploaded report-card
 documents, push/SMS notifications (the portal shows what is new on each visit), notification preferences.
 
+## 0c. 3D map: real room numbers (photos of the floor boards, 21 Oct 2026)
+`src/navigator/building.js` → `BOARDS` and `FLOOR_DEPT` hold what the boards at each floor's west stair/lift lobby say:
+departments (1 Automation & Robotics + MCA HOD office B11, 2 Electronics & Computer Science, 3 Computer Engineering,
+4 Electronics & Telecommunication, 5 Humanities & Science + Information Technology), every room number (incl. 305A/B,
+B31–B33, server room 306B), HOD offices, toilets and the Central Arcades (CA-2 = amphitheatre terrace, CA-3/CA-4 = balconies).
+The boards give the ORDER of rooms left/right of the west lobby, not their exact positions, so each number is placed on the
+nearest free room slot in that order: approximate until someone checks it on site. Rooms to the left beyond the end of the
+curve are in the west block. Model rooms the boards don't list are shown as "Room (not on the floor board)". No board was
+photographed on the ground floor, so its rooms keep generic G-numbers. The lift panel shows only the two office landlines from
+the lift notice (R & M Department, Admin Office); personal mobile numbers are deliberately left out.
+
 ## 1. In one minute (for the HOD)
 Students, teachers and the HOD sign in with their phone number and a one-time code (MiniMoth).
 The server identifies them from a signed cookie and looks up their role in the college database (Neon Postgres):

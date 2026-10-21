@@ -42,7 +42,12 @@ describe('offline understanding (en / Hinglish / Hindi / Marathi)', () => {
 describe('tools', () => {
   it('places resolve by name, code and Hindi word', () => {
     expect(resolvePlace('library')[0].id).toBe('library')
-    expect(resolvePlace('room 305')[0]).toMatchObject({ f: 3, code: '305' })
+    expect(resolvePlace('room 307')[0]).toMatchObject({ f: 3, code: '307' })
+    expect(resolvePlace('room 305').map((p) => p.code)).toEqual(['305A', '305B']) // the board lists 305A and 305B
+    expect(resolvePlace('305b')[0]).toMatchObject({ f: 3, code: '305B' })
+    expect(resolvePlace('B31')[0]).toMatchObject({ f: 3, code: 'B31' })
+    expect(resolvePlace('CA-3')[0]).toMatchObject({ f: 3, code: 'CA-3' })
+    expect(resolvePlace('room 101')[0]).toMatchObject({ f: 1, code: '101', block: 'west' })
     expect(resolvePlace('ग्रंथालय')[0].id).toBe('library')
     expect(resolvePlace('canteen')[0].id).toBe('canteen')
   })

@@ -47,13 +47,15 @@ export function resolvePlace(query, from = DEFAULT_FROM) {
   for (const [re, w] of SYN) if (re.test(q)) q += ' ' + w
   const ql = q.toLowerCase()
   const floor = floorFrom(ql)
-  // Room / lab codes like 305, G17, room 1 05
-  const code = ql.match(/\b(g|[0-5])\s?(\d{2})\b/)
+  // Room codes from the floor boards: 305A, 208B, B31, CA-3, G17, "room 1 05"
   const places = allPlaces()
-  if (code) {
-    const c = (code[1] === 'g' ? 'G' : code[1]) + code[2]
+  const m = ql.match(/\b(ca)\s?-?\s?([2-4])\b/) || ql.match(/\b(b)\s?([1-5]\d)\b/) || ql.match(/\b(g|[0-5])\s?(\d{2}[ab]?)\b/)
+  if (m) {
+    const c = m[1] === 'ca' ? `CA-${m[2]}` : (m[1] === 'g' ? 'G' : m[1].toUpperCase()) + m[2].toUpperCase()
     const hit = places.find((p) => p.code === c)
     if (hit) return [hit]
+    const near = places.filter((p) => p.code && p.code.startsWith(c) && /^[AB]$/.test(p.code.slice(c.length))) // "305" → 305A, 305B
+    if (near.length) return near
   }
   const words = ql.split(/[^a-z0-9&/]+/).filter((w) => w.length > 2 && !['the', 'where', 'take', 'room', 'floor', 'near', 'nearest', 'how', 'and', 'get', 'can', 'find', 'show', 'me', 'kaha', 'hai'].includes(w))
   if (!words.length) return []

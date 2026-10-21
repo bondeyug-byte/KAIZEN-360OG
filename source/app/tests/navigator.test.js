@@ -54,3 +54,28 @@ describe('left = laboratories, right = classrooms (fixed orientation)', () => {
     for (const d of db.shared.directory.filter((x) => x.category === 'lab')) expect(place(d.place.f, d.place.id).type).toBe('lab')
   })
 })
+
+import { BOARDS, FLOOR_DEPT } from '../src/navigator/building.js'
+describe('real floor boards (photos, 21 Oct 2026)', () => {
+  it('every room number on every board is on the map exactly once', () => {
+    for (const f of [1, 2, 3, 4, 5]) {
+      const codes = floorPlaces(f).map((p) => p.code)
+      const B = BOARDS[f], want = [...B.left, B.hod, ...B.right].map((x) => x.split(':').length > 1 ? x.split(':')[1] : x)
+      for (const c of want) expect(codes.filter((x) => x === c), `floor ${f} room ${c}`).toHaveLength(1)
+    }
+  })
+  it('HOD offices, departments, server room, central arcades and toilets', () => {
+    expect(place(3, 'r15')).toMatchObject({ type: 'office', code: '304', dept: 'Computer Engineering' })
+    expect(floorPlaces(1).find((p) => p.code === 'B11')).toMatchObject({ type: 'office' })
+    expect(floorPlaces(5).filter((p) => p.type === 'office').map((p) => p.code).sort()).toEqual(['504', '508'])
+    expect(floorPlaces(3).find((p) => p.code === '306B').name).toMatch(/Server room/)
+    expect(place(2, 'amphi').code).toBe('CA-2'); expect(place(4, 'balcony').code).toBe('CA-4')
+    expect(place(2, 'wc_1').short).toMatch(/accessible/)
+    expect(FLOOR_DEPT[4]).toMatch(/Telecommunication/)
+  })
+  it('west-block rooms are reachable by route', () => {
+    const w = floorPlaces(1).find((p) => p.code === '120')
+    const R = buildRoute({ f: 0, id: 'lobby' }, { f: 1, id: w.id }, 'stairs')
+    expect(R && R.total).toBeGreaterThan(10)
+  })
+})

@@ -275,6 +275,10 @@ function LiftPanel({ lift: l, scene }) {
             {[0, 1, 2, 3, 4, 5].map((f) => <button key={f} onClick={() => scene.liftGo(f)} aria-label={`Go to ${floorName(f)}`} aria-pressed={l.queue.includes(f)} className={cx('press h-11 rounded-lg font-mono text-[14px] font-semibold', f === l.floor && !l.moving ? 'bg-ground text-muted' : l.queue.includes(f) ? 'bg-maroon text-white' : 'border border-line bg-surface hover:bg-ground')}>{floorShort(f)}</button>)}
           </div>
         ) : <button onClick={() => scene.useLift()} className="press mt-2 min-h-[36px] w-full rounded-lg bg-maroon px-3 text-[13px] font-semibold text-white">{l.here ? 'Open doors' : 'Call lift'} <span className="opacity-70">(E)</span></button>}
+      {l.inside && l.allowed && <details className="mt-2 text-[12px]"><summary className="cursor-pointer font-semibold text-muted">If the lift gets stuck</summary>
+        <p className="mt-1">Don't try to open the doors yourself. Press the <b>bell</b> button in the lift and wait for help.</p>
+        <p className="mt-1">R &amp; M Department: <a className="font-semibold text-maroon" href="tel:+912261532516">022 6153 2516</a><br />Admin Office: <a className="font-semibold text-maroon" href="tel:+912261532506">022 6153 2506</a></p>
+        <p className="mt-1 text-muted">From the Emergency Response Team notice inside VESIT's lifts.</p></details>}
     </div>
   )
 }

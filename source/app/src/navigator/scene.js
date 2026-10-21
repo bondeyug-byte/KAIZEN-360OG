@@ -522,9 +522,10 @@ export class CampusScene {
     const y = f * H, g = [], walls = [], gloss = [], slab = []
     const show = (p) => this.layer === 'all' || ['lobby', 'canteen', 'office', 'library', 'amphi'].includes(p.type) || (this.layer === 'vertical' ? p.type === 'lift' || p.type === 'stairs' : p.type === this.layer)
     const holes = openings(f - 1) // stairwells and lift shafts pass through every slab above the ground
-    if (f === 2 || f === 3 || f === 4) { const r0 = f === 2 ? 74 : 70; slab.push(...plateG(64, 88, 48, TERRACE[0], 0.25, y - 0.25, PAL.slab, holes), sectorG(r0, 88, TERRACE[0], TERRACE[1], 0.25, y - 0.25, PAL.slab), ...plateG(64, 88, TERRACE[1], 132, 0.25, y - 0.25, PAL.slab, holes)) }
-    else slab.push(...plateG(64, 88, 48, 132, 0.25, y - 0.25, PAL.slab, holes))
-    gloss.push(sectorG(74, 78, 48, f === 0 ? 138 : 132, 0.03, y, FLOOR_TINT[f]))
+    if (f === 2 || f === 3 || f === 4) { const r0 = f === 2 ? 74 : 70; slab.push(...plateG(64, 88, 48, TERRACE[0], 0.25, y - 0.25, PAL.slab, holes), sectorG(r0, 88, TERRACE[0], TERRACE[1], 0.25, y - 0.25, PAL.slab), ...plateG(64, 88, TERRACE[1], 142, 0.25, y - 0.25, PAL.slab, holes)) }
+    else slab.push(...plateG(64, 88, 48, 142, 0.25, y - 0.25, PAL.slab, holes)) // to 142°: the rooms in the west block
+    gloss.push(sectorG(74, 78, 48, f === 0 ? 138 : 141.8, 0.03, y, FLOOR_TINT[f]))
+    if (f > 0) walls.push(sectorG(87.8, 88.0, 132, 142, H - 0.25, y, PAL.wall), sectorG(64.0, 64.2, 132, 142, H - 0.25, y, PAL.wall), sectorG(64, 88, 141.8, 142, H - 0.25, y, PAL.wall)) // west block shell (inside the end block)
     const radial = new Set()
     const addRadial = (r1, r2, a) => { const k = r1 + ':' + a.toFixed(2); if (radial.has(k)) return; radial.add(k); walls.push(sectorG(r1, r2, a - 0.07, a + 0.07, 3.4, y, PAL.wall)) }
     const corridorWall = (rw, a1, a2) => { walls.push(sectorG(rw - 0.09, rw + 0.09, a1, a2, 1.2, y, PAL.dado), sectorG(rw - 0.09, rw + 0.09, a1, a2, 2.2, y + 1.2, PAL.wall)) }
@@ -621,9 +622,9 @@ export class CampusScene {
       }
     }
     // corridor ceiling: bulkheads above the corridor walls and a row of light panels
-    const aEnd = f === 0 ? 132 : 132
-    vc.push(sectorG(73.82, 73.98, 48, aEnd, H - 0.25 - 3.4, y + 3.4, PAL.wall), sectorG(78.02, 78.18, 48, 132, H - 0.25 - 3.4, y + 3.4, PAL.wall))
-    for (let a = 49.5; a <= (f === 0 ? 137 : 130.5); a += 2.4) bx(glow, 76, a, H - 0.29, 1.1, 0.04, 0.34, '#FFF4DC')
+    const aEnd = f === 0 ? 132 : 141.8
+    vc.push(sectorG(73.82, 73.98, 48, aEnd, H - 0.25 - 3.4, y + 3.4, PAL.wall), sectorG(78.02, 78.18, 48, aEnd, H - 0.25 - 3.4, y + 3.4, PAL.wall))
+    for (let a = 49.5; a <= (f === 0 ? 137 : 140.5); a += 2.4) bx(glow, 76, a, H - 0.29, 1.1, 0.04, 0.34, '#FFF4DC')
     // stairs: exit signs and fire extinguishers on the opposite wall (clear of doors)
     for (const c of CORES) {
       quad(dec, 74.02, c.mid, 2.85, 0.62, 0.31, 'out', REG.exit)
@@ -670,6 +671,8 @@ export class CampusScene {
         const run = depth - 3.3
         for (const s of [-(W / 2 - 0.3), W / 2 - 0.3]) box(0.24, 0.06, run, 1.8 + run / 2, s, 2.45, '#9AA0A6') // cable trays
       }
+    } else if (p.short?.startsWith('Server')) { // server room: rows of racks
+      for (let d = 2.4; d < depth - 1; d += 1.8) { box(W - 2.2, 2.1, 0.8, d, 0, 1.05, '#2E3338'); if (full) for (const yy of [0.6, 1.1, 1.6]) box(0.05, 0.03, 0.05, d - 0.42, -W / 2 + 1.4, yy, '#49D17A', glow) }
     } else { // HOD cabin / department office
       box(1.8, 0.76, 0.85, depth - 2.6, 0, 0.38, '#5A3B26'); box(0.6, 1.0, 0.6, depth - 1.75, 0, 0.5, '#2C2C2C') // desk + chair
       for (const s of [-0.55, 0.55]) box(0.5, 0.82, 0.5, depth - 3.7, s, 0.41, '#6E5A48')         // visitor chairs
@@ -1378,7 +1381,7 @@ export class CampusScene {
     const from = { r: Math.hypot(p.x, p.z), a: Math.atan2(-p.z, p.x) / D }
     const nx = p.x + dx, nz = p.z + dz
     const aN = Math.atan2(-nz, nx) / D, onDeck = this.floor === 2 && !W.lift && aN > TERRACE[0] + 0.3 && aN < TERRACE[1] - 0.3
-    let to = { r: Math.max(onDeck ? LOGGIA.deck[0] + 0.5 : 64.6, Math.min(87.4, Math.hypot(nx, nz))), a: Math.max(48.6, Math.min(this.floor === 0 && !W.lift ? 141 : 131.4, Math.atan2(-nz, nx) / D)) }
+    let to = { r: Math.max(onDeck ? LOGGIA.deck[0] + 0.5 : 64.6, Math.min(87.4, Math.hypot(nx, nz))), a: Math.max(48.6, Math.min(W.lift ? 131.4 : 141, Math.atan2(-nz, nx) / D)) }
     const Lf = W.lift ? this.lifts.get(W.lift) : null, Lt = this.liftAt(to.r, to.a)
     const corridor = (L, q) => (L.inner ? q.r >= L.door && q.r <= 78 : q.r <= L.door && q.r >= 74)
     if (Lf && Lt !== Lf) { // leaving the cab: only through open doors, into the corridor

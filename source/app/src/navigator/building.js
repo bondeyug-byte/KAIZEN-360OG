@@ -20,8 +20,22 @@ const LAB_NAME = { 1: { l21: 'Programming Lab', l22: 'Web Tech Lab', l23: 'Compu
 // Window-side partition between the two fixed staff-lift shafts (positions unchanged from the original model).
 const SL1 = [108.7857143, 111.2857143], SL2 = [68.7142857, 71.2142857]
 const OUTER_RUNS = [['lab', 132, SL1[1], 4], ['lift', SL1[1], SL1[0], 1], ['lab', SL1[0], 90, 4], ['room', 90, SL2[1], 6], ['lift', SL2[1], SL2[0], 1], ['room', SL2[0], 48, 7]]
-// VESIT gives each upper floor to one department but doesn't publish which — fill these in.
-export const FLOOR_DEPT = { 1: null, 2: null, 3: null, 4: null, 5: null }
+// Departments per floor, from the department signs at each floor's west stair/lift lobby (photos, 21 Oct 2026).
+export const FLOOR_DEPT = { 1: 'Automation & Robotics', 2: 'Electronics & Computer Science', 3: 'Computer Engineering', 4: 'Electronics & Telecommunication Engineering', 5: 'Humanities & Science · Information Technology' }
+/**
+ * Room numbers from the floor directory boards (photos, 21 Oct 2026). Each board hangs at the WEST stair/lift lobby:
+ * `left` = rooms to the left (nearest first, continuing into the west block), `right` = rooms to the right along the
+ * curve (nearest first). The boards give the ORDER, not exact positions, so placement on the plan is approximate.
+ * 'HOD' entries are HOD offices; the first one is the cabin next to the gents' toilet by the stairs.
+ */
+export const BOARDS = {
+  1: { left: ['103', '102', '101', '117', '118', '119', '120'], hod: '106', right: ['104', '105', '107', '108', '109', '110', '111', 'HOD:B11:MCA Dept', 'B12', 'B13', 'B14', '112', '113', '114', '115', '116'] },
+  2: { left: ['203', '202', '201', '214', '215'], hod: '204', right: ['205', '206', '207', '208A', '208B', '209', '210', '211', 'B21', 'B22', 'B23', '212', '213'], arcade: 'CA-2', accessibleWc: true },
+  3: { left: ['303', '302', '301', '314', '315'], hod: '304', right: ['305A', '305B', '306A', 'SRV:306B', '307', '308', '309A', '309B', '310A', '310B', '311', 'B31', 'B32', 'B33', '312', '313'], arcade: 'CA-3' },
+  4: { left: ['403', '402', '401', '414', '415'], hod: '404', right: ['405', '406', '407', '408A', '408B', '409', '410', '411', 'B41', 'B42', 'B43', '412', '413'], arcade: 'CA-4' },
+  5: { left: ['503', '502', '501', '521', '522', '523', '524'], hod: '504', right: ['505', '506', '507A', '507B', 'HOD:508', '509', '510', '511', 'B51', 'B52', 'B53', '512', '513', '514', '515', '516', '517', '518', '519', '520'] },
+}
+const WEST_LOBBY = 122.5 // the boards hang at the west stairs (stairs_w spans 119–122.5°)
 export const CONNECTORS = { student: ['lift_s1', 'lift_s2', 'lift_s3', 'lift_s4'], staff: ['lift_staff1', 'lift_staff2', 'lift_svc_w', 'lift_svc_e'], stairs: ['stairs_w', 'stairs_e'] }
 export const TYPE_FILL = { room: '#EBD2CF', lab: '#DCC6A3', wc: '#C4DACD', lift: '#2B1519', lobby: '#F7EFE6', canteen: '#E6CFA8', amphi: '#C9774F', office: '#D5D3E6', library: '#BFD1E0', stairs: '#8C7479' }
 export const TYPE_LABEL = { room: 'Classroom', lab: 'Lab', wc: 'Washroom', lift: 'Lift', stairs: 'Stairs', lobby: 'Lobby', canteen: 'Canteen', amphi: 'Amphitheatre', office: 'Office', library: 'Library' }
@@ -85,17 +99,50 @@ export function floorPlaces(f) {
     for (const id of ids) list.splice(list.findIndex((x) => x.id === id), 1)
     add({ id: 'library', type: 'library', code: 'LIB', short: 'Library', name: 'Central library', r1: 78, r2: 88, lo, hi, side: 'outer' })
   }
-  if (f >= 1) {
-    const dept = FLOOR_DEPT[f]
-    Object.assign(list.find((x) => x.id === 'r15'), { type: 'office', code: 'HOD', short: dept ? `${dept} office` : 'Department office', name: dept ? `${dept} department office · HOD cabin` : 'Department office · HOD cabin' })
-  }
+  if (f >= 1 && !BOARDS[f]) Object.assign(list.find((x) => x.id === 'r15'), { type: 'office', code: 'HOD', short: 'Department office', name: 'Department office · HOD cabin' })
+  if (BOARDS[f]) applyBoard(f, list, add)
   const KW = { wc: 'washroom toilet restroom wc bathroom', lift: 'lift elevator', stairs: 'stairs staircase steps fire exit', canteen: 'canteen food cafeteria lunch', amphi: 'amphitheatre amphi terrace open section', lab: 'lab laboratory', room: 'room classroom', lobby: 'lobby entrance reception', office: 'office hod head department principal admin administration exam examination cell', library: 'library books reading study' }
   list.forEach((p) => {
     p.wing = p.am > 100 ? 'west wing' : p.am < 80 ? 'east wing' : 'centre'
     p.where = p.side === 'outer' ? 'window side' : p.side === 'inner' ? 'courtyard side' : ''
-    p.search = [p.name, p.short, p.code, KW[p.type] || '', floorName(f)].join(' ').toLowerCase()
+    p.search = [p.name, p.short, p.code, KW[p.type] || '', p.dept ? `${p.dept} department hod` : '', p.type === 'wc' ? 'toilet ladies gents' : '', floorName(f)].join(' ').toLowerCase()
   })
   return (cache[f] = list)
+}
+/** Give the floor's places their real numbers (see BOARDS); adds west-block rooms the curve has no room for. */
+function applyBoard(f, list, add) {
+  const B = BOARDS[f], teach = (p) => ['room', 'lab'].includes(p.type) && (p.side === 'inner' || p.side === 'outer')
+  const west = list.filter((p) => teach(p) && p.am > WEST_LOBBY).sort((a, b) => a.am - b.am)
+  const need = B.left.length - west.length
+  if (need > 0) { // west block (beyond the end of the curve, 132°–142°): window side and courtyard side, nearest first
+    const nOut = Math.ceil(need / 2), nIn = need - nOut, slots = []
+    for (const [side, n, r1, r2] of [['outer', nOut, 78, 88], ['inner', nIn, 64, 74]]) for (let k = 0; k < n; k++) { const lo = 132 + (10 * k) / n; slots.push({ side, r1, r2, lo, hi: lo + 10 / n }) }
+    slots.sort((a, b) => a.lo - b.lo || (a.side === 'outer' ? -1 : 1)).forEach((o, k) => { const p = { id: 'w' + (k + 1), type: 'lab', code: '', short: '', name: '', ...o, block: 'west' }; add(p); west.push(p) })
+  }
+  const label = (p, raw) => {
+    const [kind, num, note] = raw.includes(':') ? raw.split(':') : ['', raw, '']
+    p.code = num
+    if (kind === 'HOD') Object.assign(p, { type: 'office', short: `HOD office ${num}`, name: `HOD office ${num}${note ? ` · ${note}` : ''}` })
+    else if (kind === 'SRV') Object.assign(p, { type: 'office', short: `Server room ${num}`, name: `Server room ${num}` })
+    else Object.assign(p, { short: `Room ${num}`, name: `Room ${num}${p.labName ? ` · ${p.labName}` : ''}${p.block ? ' (west block)' : ''}` })
+  }
+  B.left.forEach((raw, i) => west[i] && label(west[i], raw))
+  const hod = list.find((p) => p.id === 'r15')
+  if (hod) Object.assign(hod, { type: 'office', code: B.hod, short: `HOD office ${B.hod}`, name: `HOD office ${B.hod} · ${FLOOR_DEPT[f]}` })
+  const east = list.filter((p) => teach(p) && p.am < WEST_LOBBY && p.id !== 'r15').sort((a, b) => b.am - a.am)
+  B.right.forEach((raw, i) => east[i] && label(east[i], raw))
+  // places the board doesn't list keep a neutral label (no invented number)
+  for (const p of east.slice(B.right.length)) Object.assign(p, { code: '—', short: 'Room (unnumbered)', name: 'Room (not on the floor board)' })
+  for (const p of west.slice(B.left.length)) Object.assign(p, { code: '—', short: 'Room (unnumbered)', name: 'Room (not on the floor board)' })
+  const arcade = list.find((p) => p.type === 'amphi' || p.id === 'balcony')
+  if (arcade && B.arcade) Object.assign(arcade, { code: B.arcade, short: `Central Arcade (${B.arcade})`, name: `Central Arcade ${B.arcade} · ${arcade.type === 'amphi' ? 'open amphitheatre terrace' : 'balcony over the amphitheatre'}` })
+  const wc = (id) => list.find((p) => p.id === id)
+  const acc = B.accessibleWc ? ' (accessible)' : ''
+  if (wc('wc_1')) Object.assign(wc('wc_1'), { short: `Ladies toilet${acc}`, name: `Ladies toilet${acc} · west` })
+  if (wc('wc_2')) Object.assign(wc('wc_2'), { short: `Gents toilet${acc}`, name: `Gents toilet${acc} · by the west stairs` })
+  if (wc('wc_3')) { Object.assign(wc('wc_3'), { short: 'Gents toilet', name: 'Gents toilet · east' }); Object.assign(wc('wc_4'), { short: 'Ladies toilet', name: 'Ladies toilet · east' }) }
+  else if (wc('wc_4')) Object.assign(wc('wc_4'), { short: 'Gents & ladies toilets', name: 'Gents & ladies toilets · east' })
+  for (const p of list) if (p.type === 'office' && p.short.startsWith('HOD')) p.dept = FLOOR_DEPT[f]
 }
 export const place = (f, id) => floorPlaces(f).find((p) => p.id === id)
 export const allPlaces = () => { const o = []; for (let f = 0; f < FLOORS; f++) o.push(...floorPlaces(f)); return o }
