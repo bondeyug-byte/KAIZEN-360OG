@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useApp, profileCompletion } from '../store/AppContext.jsx'
-import { PageHeader, Card, CardTitle, Button, Badge, Field, inputCls, cx, ConfirmButton, AnimatedNumber } from '../components/ui.jsx'
+import { PageHeader, Card, CardTitle, Button, Badge, Field, inputCls, cx, ConfirmButton, AnimatedNumber, Spinner } from '../components/ui.jsx'
 import Icon from '../components/Icon.jsx'
 import { CLASSES, CLASS_LABEL, INTEREST_OPTIONS } from '../data/config.js'
 import { maskPhone } from '../lib/auth.js'
 import { YEARS, BRANCHES, divisionsFor, validateAcademic, divisionInfo, hasAcademicIdentity } from '../data/academics.js'
 import { isStudent } from '../lib/posts.js'
-import { studentSummary } from '../lib/attendance.js'
 import { AttendanceSummary } from './Attendance.jsx'
+import { useStudentAttendance } from '../lib/record.js'
 import { leaderboard } from '../lib/challenges.js'
 import { verificationOf } from '../lib/rides.js'
 
 export default function Profile({ query }) {
-  const { me, db, now, session, updateProfile, resetDemo, signOut, pushToast, sync } = useApp()
+  const { me, db, session, updateProfile, resetDemo, signOut, pushToast, sync } = useApp()
   const locked = hasAcademicIdentity(me) && (me.academicLocked !== false)
   const real = session.mode === 'minimoth' // real accounts choose from the college's real divisions
   const [acErr, setAcErr] = useState({})
@@ -57,7 +57,7 @@ export default function Profile({ query }) {
             <Field label="Name" error={err}>{(id) => <input id={id} className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoComplete="name" />}</Field>
             <div className="grid gap-3 sm:grid-cols-2">
               {isStudent(me) && real && <>
-                <div className="sm:col-span-2 rounded-lg bg-ground px-3 py-2 text-[13.5px]">{session.enrollment ? <>Your class: <b>{session.enrollment.division_code}</b> (approved). To move class, ask your HOD.</> : session.joinRequest?.status === 'pending' ? <>Request to join <b>{session.joinRequest.division_code}</b> is pending.</> : <>You haven’t joined a class yet. <a className="font-semibold text-maroon underline" href="#/portal?tab=class">Join your class</a>.</>}</div>
+                <div className="sm:col-span-2 rounded-lg bg-ground px-3 py-2 text-[13.5px]">{session.enrollment ? <>Your class: <b>{session.enrollment.division_code}</b> (approved).{' '}{session.joinRequest?.status === 'pending' && session.joinRequest.kind === 'transfer' ? <>Your request to move to <b>{session.joinRequest.division_code}</b> is waiting for approval.</> : <>Wrong division? <a className="font-semibold text-maroon underline" href="#/portal?tab=class">Request a change</a> (a teacher or the HOD approves it).</>}</> : session.joinRequest?.status === 'pending' ? <>Request to join <b>{session.joinRequest.division_code}</b> is pending.</> : <>You haven’t joined a class yet. <a className="font-semibold text-maroon underline" href="#/portal?tab=class">Join your class</a>.</>}</div>
                 <Field label="Roll number (optional)" error={acErr.roll}>{(id) => <input id={id} className={inputCls} value={f.roll} maxLength={20} onChange={(e) => setF({ ...f, roll: e.target.value })} />}</Field>
               </>}
               {isStudent(me) && !real && <>
@@ -65,7 +65,7 @@ export default function Profile({ query }) {
                 <Field label="Branch" error={acErr.branchId}>{(id) => <select id={id} disabled={locked} className={inputCls} value={f.branchId} onChange={(e) => setF({ ...f, branchId: e.target.value, division: '' })}><option value="">Choose…</option>{BRANCHES.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}</select>}</Field>
                 <Field label="Division" error={acErr.division}>{(id) => <select id={id} disabled={locked || !f.year || !f.branchId} className={inputCls} value={f.division} onChange={(e) => setF({ ...f, division: e.target.value })}><option value="">{f.year && f.branchId ? 'Choose…' : 'Pick year and branch first'}</option>{divisionsFor(f.year, f.branchId).map((d) => <option key={d}>{d}</option>)}</select>}</Field>
                 <Field label="Roll number" error={acErr.roll}>{(id) => <input id={id} disabled={locked} className={inputCls} value={f.roll} onChange={(e) => setF({ ...f, roll: e.target.value })} />}</Field>
-                {locked && <p className="text-[12.5px] text-muted sm:col-span-2">{divisionInfo(me.division)?.label} · roll {me.roll}. Your division and roll number decide which classwork and attendance you see, so only an admin can change them.</p>}
+                {locked && <p className="text-[12.5px] text-muted sm:col-span-2">{divisionInfo(me.division)?.label} · roll {me.roll}. Your division and roll number decide which classwork and attendance you see, so only an admin can change them (Admin → Students in this demo).</p>}
                 <Field label="Timetable group">{(id) => <select id={id} className={inputCls} value={f.classId} onChange={(e) => setF({ ...f, classId: e.target.value })}><option value="">Choose…</option>{[...CLASSES, 'SE-A'].map((c) => <option key={c} value={c}>{CLASS_LABEL[c]}</option>)}</select>}</Field>
               </>}
               <Field label="College ID number (optional)" hint="With your OTP-verified phone, a college email or ID marks you as a verified student for rides">{(id) => <input id={id} className={inputCls} maxLength={30} value={f.collegeId || ''} onChange={(e) => setF({ ...f, collegeId: e.target.value })} />}</Field>
@@ -95,9 +95,7 @@ export default function Profile({ query }) {
           </form>
         </Card>
         <div className="flex flex-col gap-5">
-          {isStudent(me) && hasAcademicIdentity(me) && (() => { const sum = studentSummary(db.shared, me.id, now); return (
-            <Card><CardTitle eyebrow="From recorded lectures" action={<a href="#/attendance" className="text-[13px] font-semibold text-maroon hover:underline">Details</a>}>My attendance</CardTitle>
-              {sum.overall.total ? <AttendanceSummary sum={sum} compact /> : <p className="text-[13.5px] text-muted">No lectures recorded for you yet.</p>}</Card>) })()}
+          {isStudent(me) && (real || hasAcademicIdentity(me)) && <ProfileAttendance />}
           {isStudent(me) && <ChallengeNote />}
           <Card>
             <CardTitle eyebrow="Account">Identity</CardTitle>
@@ -113,7 +111,7 @@ export default function Profile({ query }) {
             <div className="flex items-center gap-4">
               <svg viewBox="0 0 44 44" className="h-16 w-16 flex-none -rotate-90" aria-hidden="true"><circle cx="22" cy="22" r="18" fill="none" stroke="#F2EDE8" strokeWidth="5" /><circle cx="22" cy="22" r="18" fill="none" stroke={comp.pct === 100 ? '#1E7A4C' : '#1E5240'} strokeWidth="5" strokeLinecap="round" strokeDasharray={`${(comp.pct / 100) * 113.1} 113.1`} style={{ transition: 'stroke-dasharray .7s cubic-bezier(.2,.8,.2,1)' }} /></svg>
               <div><p className="text-[11px] font-semibold uppercase tracking-[.08em] text-muted">Profile completion</p><p className="font-display text-[26px] font-semibold leading-tight tabular-nums"><AnimatedNumber value={comp.pct} />%</p>
-                <p className="text-[13px] text-muted">{comp.missing.length ? `Missing: ${comp.missing.join(', ')}` : 'All set — suggestions are personalised.'}</p></div>
+                <p className="text-[13px] text-muted">{comp.missing.length ? `Missing: ${comp.missing.join(', ')}` : 'All set. Suggestions are personalised.'}</p></div>
             </div>
           </Card>
           <Card>
@@ -160,4 +158,12 @@ function SyncLine({ sync }) {
   const [tone, text] = SYNC_TEXT[sync?.status] || []
   if (!text) return null
   return <p role="status" className="mb-4 flex items-center gap-2 text-[13px] text-muted"><Badge tone={tone}>{tone === 'ok' ? 'Cloud' : 'Sync'}</Badge>{text}</p>
+}
+
+function ProfileAttendance() {
+  const att = useStudentAttendance()
+  const sum = att.sum
+  return (
+    <Card><CardTitle eyebrow="From recorded lectures" action={<a href="#/attendance" className="text-[13px] font-semibold text-maroon hover:underline">Details</a>}>My attendance</CardTitle>
+      {att.status === 'loading' ? <Spinner label="Loading" /> : !sum ? <p className="text-[13.5px] text-muted">{att.message || 'Not available right now.'}</p> : sum.overall.total ? <AttendanceSummary sum={sum} threshold={att.threshold} compact /> : <p className="text-[13.5px] text-muted">No lectures recorded for you yet.</p>}</Card>)
 }

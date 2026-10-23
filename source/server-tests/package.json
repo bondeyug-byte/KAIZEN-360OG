@@ -1,1 +1,1 @@
-{"private": true, "scripts": {"test": "node policy.test.cjs && node timetable.test.cjs && node phase1.test.cjs && node roles.test.cjs && node parent.test.cjs"}, "devDependencies": {"@electric-sql/pglite": "0.2.17", "@neondatabase/serverless": "0.10.4"}}
+{"private": true, "scripts": {"test": "node policy.test.cjs && node timetable.test.cjs && node phase1.test.cjs && node roles.test.cjs && node parent.test.cjs && node transfer.test.cjs"}, "devDependencies": {"@electric-sql/pglite": "0.2.17", "@neondatabase/serverless": "0.10.4"}}

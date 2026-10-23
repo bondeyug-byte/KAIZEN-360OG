@@ -93,7 +93,7 @@ function NoteForm({ onDone, existing, preset }) {
         <Field label="Subtopic (optional)">{(id) => <input id={id} className={inputCls} value={f.subtopic} onChange={set('subtopic')} />}</Field>
         <Field label="Who can see it">{(id) => <select id={id} className={inputCls} value={f.scope} onChange={set('scope')}><option value="all">Everyone at the institute</option><option value="group">Only this year & branch</option></select>}</Field>
       </div>
-      {!existing && <FilePicker label={`File — ${typesLabel(NOTE_TYPES)}, up to ${NOTE_MAX_MB} MB`} files={files} setFiles={setFiles} limits={{ types: NOTE_TYPES, maxMB: NOTE_MAX_MB }} max={1} />}
+      {!existing && <FilePicker label={`File (${typesLabel(NOTE_TYPES)}, up to ${NOTE_MAX_MB} MB)`} files={files} setFiles={setFiles} limits={{ types: NOTE_TYPES, maxMB: NOTE_MAX_MB }} max={1} />}
       {(errors.file || errors.form) && <p role="alert" className="text-[13.5px] text-bad">{errors.file || errors.form}</p>}
       <p className="text-[12px] text-muted">Only share material you're allowed to share. Your name is shown as the uploader.</p>
       <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onDone}>Cancel</Button><Button type="submit" disabled={busy || (!existing && !files.length)}>{busy ? 'Saving…' : existing ? 'Save' : 'Share'}</Button></div>

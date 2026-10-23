@@ -146,7 +146,7 @@ export default function Layout({ route, children, full }) {
               <span className="mt-1 block text-[12px] text-white/75">Every room, lift and staircase in 3D.</span>
               <span className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-white/35 px-2.5 py-1.5 text-[12px] font-semibold">Explore campus <Icon name="arrowUR" size={13} /></span>
             </a>}
-            <div className="flex flex-none gap-1 px-1 text-[12px] font-medium text-muted"><a href="#/about" className="rounded-md px-2 py-1 hover:bg-white/60 hover:text-ink">About</a><a href="#/welcome" className="rounded-md px-2 py-1 hover:bg-white/60 hover:text-ink">Landing page</a></div>
+            <div className="flex flex-none gap-1 px-1 text-[12px] font-medium text-muted"><a href="#/about" className="rounded-md px-2 py-1 hover:bg-white/60 hover:text-ink">About</a><a href="#/privacy" className="rounded-md px-2 py-1 hover:bg-white/60 hover:text-ink">Privacy</a><a href="#/welcome" className="rounded-md px-2 py-1 hover:bg-white/60 hover:text-ink">Landing page</a></div>
           </nav>
           <div className="mt-2 border-t border-line pt-3">
             {signedIn ? (

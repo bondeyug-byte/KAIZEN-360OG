@@ -45,7 +45,7 @@ export const currentTimetable = () => state
 export function useMyTimetable() {
   const { me, session } = useApp()
   const cloud = session.mode === 'minimoth' && session.cloud
-  const key = cloud ? `${session.userId}` : null
+  const key = cloud ? `${session.userId}:${session.enrollment?.division_code || ''}` : null // a confirmed division change refetches
   const snap = useSyncExternalStore((f) => { subs.add(f); return () => subs.delete(f) }, () => state)
   useEffect(() => {
     if (!key) return

@@ -98,9 +98,15 @@ export async function verifyEditPassword(secret, password, now = new Date()) {
 
 /* ---------- reporting ---------- */
 const pct = (p, n) => (n ? Math.round((p / n) * 1000) / 10 : null)
-/** A student's own lecture history and summaries. Unrecorded and cancelled lectures are excluded from %. */
-export function studentSummary(state, studentId, now = new Date()) {
-  const rows = (state.attSessions || []).filter((s) => s.status === 'recorded' && s.records && studentId in s.records).map((s) => ({ id: s.id, date: s.date, start: s.start, end: s.end, subject: s.subject, mark: s.records[studentId] })).sort((a, b) => (b.date + b.start).localeCompare(a.date + a.start))
+/**
+ * THE attendance calculation, shared by every student view (Attendance page, Overview) for both demo and
+ * phone accounts. Input: one row per recorded lecture for this student, { id, date 'YYYY-MM-DD', start, subject,
+ * mark 'P'|'A' }. Rules: percentage = present ÷ recorded lectures × 100, one decimal. Lectures that were cancelled
+ * or never recorded have no row, so they are not counted. A corrected lecture is one row with the latest mark.
+ * The server (api/_records.js recordFor) uses the same formula for the College portal and the Parent portal.
+ */
+export function summarize(rowsIn, now = new Date()) {
+  const rows = [...rowsIn].sort((a, b) => (b.date + (b.start || '')).localeCompare(a.date + (a.start || '')))
   const agg = (list) => { const present = list.filter((r) => r.mark === 'P').length; return { present, absent: list.length - present, total: list.length, pct: pct(present, list.length) } }
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now)
   const d = new Date(today + 'T00:00:00Z'), dow = (d.getUTCDay() + 6) % 7
@@ -114,6 +120,14 @@ export function studentSummary(state, studentId, now = new Date()) {
     year: agg(rows.filter((r) => r.date.slice(0, 4) === today.slice(0, 4))),
     bySubject: Object.entries(subjects).map(([subject, list]) => ({ subject, ...agg(list) })).sort((a, b) => a.subject.localeCompare(b.subject)),
   }
+}
+/** Demo accounts: rows from the browser's sample attendance sheets. Cancelled sessions have no mark for anyone. */
+export function studentSummary(state, studentId, now = new Date()) {
+  return summarize((state.attSessions || []).filter((s) => s.status === 'recorded' && s.records && studentId in s.records).map((s) => ({ id: s.id, date: s.date, start: s.start, end: s.end, subject: s.subject, mark: s.records[studentId] })), now)
+}
+/** Phone accounts: rows from the server record (GET my-record → attendance.history). */
+export function rowsFromServer(history = []) {
+  return history.map((h, i) => ({ id: `${h.date}|${h.start || ''}|${h.subject}|${i}`, date: h.date, start: h.start || '', subject: h.subject, division: h.division || null, mark: h.present ? 'P' : 'A' }))
 }
 /** Sessions for one class (teacher view), newest first, with counts. */
 export function classSessions(state, division, subject) {

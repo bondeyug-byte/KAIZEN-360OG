@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '../store/AppContext.jsx'
 import { PageHeader, Card, CardTitle, Button, Badge, Field, inputCls, Dialog, Empty, Segmented, cx, DemoTag, ConfirmButton, AnimatedNumber } from '../components/ui.jsx'
 import Icon from '../components/Icon.jsx'
-import { studentSummary } from '../lib/attendance.js'
-import { tutorsFor, weakestSubject, ATTENDANCE_REFERENCE } from '../lib/insights.js'
+import { useStudentAttendance } from '../lib/record.js'
+import { tutorsFor, weakestSubject } from '../lib/insights.js'
 import { marksTable, validateSubject, validateScale, computeSGPA, checkTarget, applyWhatIf, gradeFor, projectSGPA, RESULT, DEMO_GRADE_SCALE, requiredTotal, totalMax } from '../lib/academic.js'
 import { uid } from '../lib/ids.js'
 
@@ -115,16 +115,19 @@ function Marks({ subjects, scale, updateMyData, focus }) {
 }
 
 function SubjectTable({ s, scale, onEdit, onRemove }) {
-  const { db, me, now } = useApp()
+  const { db, me } = useApp()
   const t = marksTable(s, scale)
-  const att = studentSummary(db.shared, me.id, now).bySubject.find((x) => x.subject.toLowerCase() === s.name.toLowerCase())
+  const A = useStudentAttendance() // same records as the Attendance page (server for phone accounts)
+  const att = A.sum?.bySubject.find((x) => x.subject.toLowerCase() === s.name.toLowerCase())
+  const line = A.threshold // HOD setting for phone accounts (null = none); 75 reference for the demo
+  const low = line != null && att && att.pct != null && att.pct < line
   const tutor = tutorsFor(db.shared, s, me.id)[0]
   return (
     <Card>
-      {att && <div className={cx('mb-3 flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-[13.5px]', att.pct < ATTENDANCE_REFERENCE ? 'bg-[#FDF0D8] text-warn' : 'bg-ground')}>
-        <Icon name="check" size={15} /><span className="flex-1">Attendance in {s.code || s.name}: <b>{att.pct}%</b> ({att.present}/{att.total} recorded lectures){att.pct < ATTENDANCE_REFERENCE ? ` — below the ${ATTENDANCE_REFERENCE}% reference line` : ''}</span>
+      {att && <div className={cx('mb-3 flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-[13.5px]', low ? 'bg-[#FDF0D8] text-warn' : 'bg-ground')}>
+        <Icon name="check" size={15} /><span className="flex-1">Attendance in {s.code || s.name}: <b>{att.pct}%</b> ({att.present}/{att.total} recorded lectures){low ? `, below ${A.thresholdIsReference ? `the ${line}% reference line` : `your branch requirement of ${line}%`}` : ''}</span>
         <a href="#/attendance" className="font-semibold text-maroon hover:underline">Details</a>
-        {att.pct < ATTENDANCE_REFERENCE && tutor && <a href={`#/peer?q=${encodeURIComponent(s.name)}`} className="font-semibold text-maroon hover:underline">Catch up with {tutor.offer.userName}</a>}
+        {low && tutor && <a href={`#/peer?q=${encodeURIComponent(s.name)}`} className="font-semibold text-maroon hover:underline">Catch up with {tutor.offer.userName}</a>}
       </div>}
       <CardTitle eyebrow={`${s.code || 'Subject'} · ${s.credits} credits · out of ${s.internalMax + s.externalMax}`} action={<div className="flex gap-1"><Button size="sm" variant="secondary" icon="edit" onClick={onEdit}>Edit</Button><ConfirmButton size="sm" variant="danger" icon="trash" confirmText={`Remove ${s.code || "subject"}`} onConfirm={onRemove} aria-label={`Remove ${s.name}`} /></div>}>{s.name}</CardTitle>
       {!t.valid ? (
@@ -234,7 +237,7 @@ function Sgpa({ subjects, scale, settings, target, updateMyData }) {
               <p className="mt-2 text-sm">Best you can get: {res.bestPlan.map((p) => `${p.subject} ${p.grade}`).join(', ')}.</p>
             )}
             {res.impact && res.result !== RESULT.INSUFFICIENT && (
-              <p className="mt-3 text-xs text-muted">Biggest levers: {res.impact.slice(0, 2).map((i) => `${i.name} (${i.credits} cr — one grade point moves SGPA by ${i.perPoint.toFixed(2)})`).join('; ')}.</p>
+              <p className="mt-3 text-xs text-muted">Biggest levers: {res.impact.slice(0, 2).map((i) => `${i.name} (${i.credits} cr: one grade point moves SGPA by ${i.perPoint.toFixed(2)})`).join('; ')}.</p>
             )}
           </div>
         )}

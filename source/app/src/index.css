@@ -5,15 +5,15 @@
 :root { color-scheme: light; --ease: cubic-bezier(.2,.8,.2,1); }
 html, body, #root { min-height: 100%; }
 html, body { overflow-x: clip; } /* entry animations slide in from the side; never let them cause horizontal scroll */
-body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; color: #17251E; background: #E9F1EA; font-feature-settings: 'cv11', 'ss01'; -webkit-font-smoothing: antialiased; }
-.font-display { letter-spacing: -0.02em; }
+body { font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; color: #17251E; background: #F3F6F3; -webkit-font-smoothing: antialiased; }
+.font-display { letter-spacing: -0.01em; }
 ::selection { background: #D6F07A; }
 :focus-visible { outline: 2px solid #1E5240; outline-offset: 2px; border-radius: 6px; }
 * { scrollbar-width: thin; scrollbar-color: #C6D6C9 transparent; }
 .grid > * { min-width: 0; }
 
 /* ---------- motion (all disabled under prefers-reduced-motion) ---------- */
-.page-in { animation: pageIn .34s var(--ease) both; }
+.page-in { } /* route changes no longer slide in */
 @keyframes pageIn { from { opacity: 0; transform: translateX(18px) } to { opacity: 1; transform: none } }
 .seg-ind { transition: transform .28s var(--ease), width .28s var(--ease), height .28s var(--ease); }
 .slide-in-left { animation: slideL .3s var(--ease) both; }
@@ -23,14 +23,10 @@ body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif; fon
 .slide-down { animation: slideD .24s var(--ease) both; transform-origin: top; }
 @keyframes slideD { from { opacity: 0; transform: translateY(-6px) scaleY(.97) } to { opacity: 1; transform: none } }
 .sheet { transition: height .32s var(--ease); }
-.stagger > * { animation: rise .42s var(--ease) both; }
-.stagger > *:nth-child(2) { animation-delay: .04s } .stagger > *:nth-child(3) { animation-delay: .08s } .stagger > *:nth-child(4) { animation-delay: .12s }
-.stagger > *:nth-child(5) { animation-delay: .16s } .stagger > *:nth-child(6) { animation-delay: .2s } .stagger > *:nth-child(7) { animation-delay: .24s } .stagger > *:nth-child(n+8) { animation-delay: .28s }
-@keyframes rise { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
-.lift { transition: transform .18s var(--ease), box-shadow .18s var(--ease), border-color .18s; }
-.lift:hover { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(23,37,30,.05), 0 14px 30px -12px rgba(18,53,40,.25); border-color: #C6D6C9; }
-.press { transition: transform .12s var(--ease), background-color .15s, border-color .15s, color .15s, box-shadow .15s; }
-.press:active { transform: scale(.97); }
+.stagger > * { } /* lists appear at once (no staggered entrance) */
+.lift { transition: border-color .15s, background-color .15s; }
+.lift:hover { border-color: #9DB5A4; }
+.press { transition: background-color .15s, border-color .15s, color .15s; }
 .fade-in { animation: fadeIn .2s ease-out both; }
 @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
 .dialog-in { animation: dialogIn .26s var(--ease) both; }
@@ -77,10 +73,9 @@ svg.nolabels .lbl { display: none; }
 .map-fallback .leaflet-container { background: transparent; }
 
 /* ---------- green glass theme ---------- */
-.app-bg { background: #E9F1EA; position: relative; isolation: isolate; }
-.app-bg::before { content: ''; position: fixed; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(233,241,234,.86), rgba(233,241,234,.94)), url(./assets/campus-blur.jpg) center / cover no-repeat; }
-.glass { background: rgba(255,255,255,.72); -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2); border: 1px solid rgba(255,255,255,.75); }
-.glass-dark { background: rgba(18,53,40,.55); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.22); }
-.glass-btn { background: rgba(255,255,255,.16); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.45); color: #fff; }
-.glass-btn:hover { background: rgba(255,255,255,.26); }
-@media (prefers-reduced-transparency: reduce) { .glass { background: #fff } .glass-dark { background: #123528 } }
+.app-bg { background: #F3F6F3; position: relative; isolation: isolate; }
+/* Surfaces are solid (no frosted glass, no blurred photo behind the app). Class names kept so markup is unchanged. */
+.glass { background: #FFFFFF; border: 1px solid #DCE7DE; }
+.glass-dark { background: #123528; border: 1px solid rgba(255,255,255,.18); }
+.glass-btn { background: #123528; border: 1px solid rgba(255,255,255,.55); color: #fff; }
+.glass-btn:hover { background: #1E5240; border-color: #fff; }

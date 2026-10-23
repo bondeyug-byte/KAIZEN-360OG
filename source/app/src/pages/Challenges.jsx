@@ -363,7 +363,7 @@ export function ReviewList({ challenges }) {
   const mine = challenges.filter((c) => canReview(c, me))
   const rows = mine.flatMap((c) => submissionsFor(db.shared, c.id).map((s) => ({ c, s }))).filter(({ s }) => (show === 'new' ? s.status === SUB.SUBMITTED : true)).sort((a, b) => Date.parse(b.s.at) - Date.parse(a.s.at))
   const decide = (s, d) => {
-    const r = runShared((st) => reviewSubmission(st, s.id, me, d, fb[s.id] || '', new Date()), d === 'accept' ? 'Accepted — points recorded and the student notified.' : 'Review saved — the student was notified.')
+    const r = runShared((st) => reviewSubmission(st, s.id, me, d, fb[s.id] || '', new Date()), d === 'accept' ? 'Accepted. Points recorded and the student notified.' : 'Review saved; the student was notified.')
     if (r.ok) setFb({ ...fb, [s.id]: '' })
   }
   if (!mine.length) return <Empty icon="lock" title="Nothing to review">You can review solutions for challenges you posted.</Empty>

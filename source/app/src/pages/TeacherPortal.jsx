@@ -190,7 +190,7 @@ function Compose({ onDone, existing }) {
         </>}
         {(kind === 'notice' || kind === 'lecture' || kind === 'document') && <Field label="Hide after (optional)">{(id) => <input id={id} type="datetime-local" className={inputCls} value={f.expiresAt} onChange={set('expiresAt')} />}</Field>}
       </div>
-      <FilePicker label={kind === 'document' ? 'Document (PDF, JPG or PNG, up to 10 MB)' : 'Attachments (optional) — PDF, JPG or PNG, up to 10 MB each'} files={files} setFiles={setFiles} limits={RES} max={5} multiple />
+      <FilePicker label={kind === 'document' ? 'Document (PDF, JPG or PNG, up to 10 MB)' : 'Attachments (optional): PDF, JPG or PNG, up to 10 MB each'} files={files} setFiles={setFiles} limits={RES} max={5} multiple />
       {errors.files && <p role="alert" className="text-[13px] font-medium text-bad">{errors.files}</p>}
       <AudiencePicker value={aud} onChange={(a) => { setAud(a); if (a.divisions.length) setErrors(({ audience, ...rest }) => rest) }} allowed={allowed} profiles={db.profiles} error={errors.audience} />
       {errors.form && <p role="alert" className="rounded-lg bg-[#FBEDEA] px-3 py-2 text-[13.5px] text-bad">{errors.form}</p>}

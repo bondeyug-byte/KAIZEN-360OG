@@ -16,13 +16,14 @@ export default {
         terra: '#B4532F', route: '#2457C5', sand: '#F2EDE8', ok: '#1E7A4C', warn: '#9A5B06', bad: '#B42318',
       },
       fontFamily: {
-        display: ['"Inter Tight"', 'Inter', 'system-ui', 'sans-serif'],
-        sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        // IBM Plex (SIL Open Font Licence 1.1): one family for text and headings, its mono for times and codes
+        display: ['"IBM Plex Sans"', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        sans: ['"IBM Plex Sans"', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
       },
       boxShadow: {
-        card: '0 1px 2px rgba(23,37,30,.05), 0 8px 24px -14px rgba(23,37,30,.18)',
-        glass: '0 1px 0 rgba(255,255,255,.7) inset, 0 12px 32px -16px rgba(18,53,40,.28)',
+        card: '0 1px 2px rgba(23,37,30,.05)',
+        glass: '0 1px 2px rgba(23,37,30,.06)',
         lift: '0 2px 4px rgba(31,35,41,.04), 0 10px 24px -10px rgba(31,35,41,.18)',
         pop: '0 24px 48px -16px rgba(31,35,41,.28), 0 2px 6px rgba(31,35,41,.06)',
       },

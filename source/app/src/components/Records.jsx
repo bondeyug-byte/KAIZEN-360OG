@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '../store/AppContext.jsx'
 import { Card, CardTitle, Button, Badge, Empty, Segmented, Field, inputCls, relTime, cx, ConfirmButton } from './ui.jsx'
+import { useMyRecord } from '../lib/record.js'
 import { api } from '../lib/portal.js'
 import { useLoad, Loading, useCatalog } from './CloudPortal.jsx'
 
@@ -118,7 +119,8 @@ export function RecordView({ rec, audience = 'parent' }) {
 
 /** Student: their own attendance and published marks (same view the parent sees). */
 export function MyRecord() {
-  const s = useLoad(() => api('my-record'), [])
+  const r = useMyRecord() // the same cached record the Attendance page and Overview use
+  const s = { loading: r.status === 'loading', data: r.data, error: r.status === 'error' && !r.data ? r.message : '' }
   return <Loading s={s}>{s.data && (s.data.enrolled ? <RecordView rec={s.data} audience="student" /> : <Empty icon="user" title="Join your class first">Your attendance and marks appear after a teacher approves your class.</Empty>)}</Loading>
 }
 
@@ -349,7 +351,7 @@ export function AttendanceThreshold() {
   return (
     <Card className="max-w-xl">
       <CardTitle eyebrow={`Attendance requirement · ${branch}`}>Warning level shown to students and parents</CardTitle>
-      <p className="mt-1 text-[13px] text-muted">Enter the percentage your college rules require. Leave empty if there is no published rule — then no warning level is shown anywhere.</p>
+      <p className="mt-1 text-[13px] text-muted">Enter the percentage your college rules require. Leave empty if there is no published rule; then no warning level is shown anywhere.</p>
       <Loading s={s}><div className="mt-3 flex items-end gap-2"><Field label="Required attendance (%)">{(id) => <input id={id} type="number" min="1" max="100" className={cx(inputCls, 'w-32')} value={v} onChange={(e) => setV(e.target.value)} />}</Field><Button onClick={save}>Save</Button></div></Loading>
     </Card>
   )

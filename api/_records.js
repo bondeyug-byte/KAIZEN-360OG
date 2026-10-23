@@ -111,7 +111,8 @@ module.exports = (H) => {
       `with s as (insert into attendance_sessions (division_code, subject, on_date, start_time, taken_by, taken_by_name) values ($1, $2, $3, $4, $5, $6)
           on conflict (division_code, subject, on_date, start_time) do update set updated_at = now(), taken_by = excluded.taken_by, taken_by_name = excluded.taken_by_name
           returning id, (xmax = 0) as created),
-        d as (delete from attendance_marks m using s where m.session_id = s.id and not (m.student_id = any($7::uuid[]))),
+        d as (delete from attendance_marks m using s where m.session_id = s.id and not (m.student_id = any($7::uuid[]))
+          and exists (select 1 from class_enrollments e where e.student_id = m.student_id and e.division_code = $1 and e.status = 'active')), -- keep marks of students who have since left the class
         i as (insert into attendance_marks (session_id, student_id, present) select s.id, x.sid, x.p from s, unnest($7::uuid[], $8::boolean[]) as x(sid, p)
           on conflict (session_id, student_id) do update set present = excluded.present returning present)
        select (select id from s) as id, (select created from s) as created, (select count(*) from i where present)::int as present, (select count(*) from i)::int as total`,
@@ -320,7 +321,7 @@ module.exports = (H) => {
       where e.student_id = $1 and e.status = 'active' order by e.approved_at desc limit 1`, [studentId]);
     const student = { id: stu.id, name: stu.name || '', roll: stu.roll || null, division: enr ? enr.division_code : null, divisionName: enr ? enr.division_name : null, branch: enr ? enr.branch_code : null, branchName: enr ? enr.branch_name : null, year: enr ? enr.year_label || enr.year_id : null };
     // attendance: computed from the recorded marks only
-    const att = await db.q(`select s.on_date, s.subject, s.start_time, s.updated_at, m.present from attendance_marks m join attendance_sessions s on s.id = m.session_id where m.student_id = $1 order by s.on_date desc, s.start_time desc limit 2000`, [studentId]);
+    const att = await db.q(`select s.on_date, s.subject, s.start_time, s.updated_at, s.division_code, m.present from attendance_marks m join attendance_sessions s on s.id = m.session_id where m.student_id = $1 order by s.on_date desc, s.start_time desc limit 2000`, [studentId]);
     const sum = (rows) => { const p = rows.filter((r) => r.present).length; return { total: rows.length, present: p, absent: rows.length - p, percent: rows.length ? Math.round((1000 * p) / rows.length) / 10 : null } };
     const group = (key) => { const m = new Map(); for (const r of att) { const k = key(r); if (!m.has(k)) m.set(k, []); m.get(k).push(r) } return [...m].map(([k, rows]) => ({ key: k, ...sum(rows) })) };
     const day = (d) => (typeof d === 'string' ? d.slice(0, 10) : ymd(d));
@@ -328,11 +329,13 @@ module.exports = (H) => {
       ...sum(att), period: att.length ? { from: day(att[att.length - 1].on_date), to: day(att[0].on_date) } : null,
       bySubject: group((r) => r.subject).sort((a, b) => a.key.localeCompare(b.key)),
       byMonth: group((r) => day(r.on_date).slice(0, 7)).sort((a, b) => a.key.localeCompare(b.key)),
-      history: att.slice(0, 120).map((r) => ({ date: day(r.on_date), subject: r.subject, start: r.start_time, present: r.present })),
+      // every recorded lecture (capped at 2000), so the Attendance page, Overview and Parent portal all compute from the same rows
+      history: att.map((r) => ({ date: day(r.on_date), subject: r.subject, start: r.start_time, division: r.division_code, present: r.present })),
+      rules: 'Counted: every lecture a teacher recorded for this student. Not counted: lectures that were not held or not recorded yet. Corrections replace the earlier mark.',
     };
     // marks: published assessments of the class that have an entry for this student
     const mk = enr ? await db.q(`select a.id, a.subject, a.name, a.term, a.held_on, a.max_marks, a.published_at, a.updated_at, m.obtained, m.absent, m.grade, m.remark
-      from assessments a join assessment_marks m on m.assessment_id = a.id and m.student_id = $1 where a.division_code = $2 and a.status = 'published' order by a.held_on desc nulls last, a.published_at desc limit 300`, [studentId, enr.division_code]) : [];
+      from assessments a join assessment_marks m on m.assessment_id = a.id and m.student_id = $1 where a.status = 'published' order by a.held_on desc nulls last, a.published_at desc limit 300`, [studentId]) : []; // the student's own marks, including from an earlier division
     const items = mk.map((r) => ({ id: r.id, subject: r.subject, name: r.name, term: r.term, date: r.held_on ? day(r.held_on) : null, max: Number(r.max_marks), obtained: r.obtained === null ? null : Number(r.obtained), absent: r.absent, grade: r.grade || null, remark: r.remark || null, percent: r.obtained === null || r.absent ? null : Math.round((1000 * Number(r.obtained)) / Number(r.max_marks)) / 10, publishedAt: r.published_at, updatedAt: r.updated_at }));
     const termMap = new Map(); for (const i of items) { if (i.obtained === null) continue; const k = i.term || '—'; const t = termMap.get(k) || { term: k, obtained: 0, max: 0, count: 0 }; t.obtained += i.obtained; t.max += i.max; t.count++; termMap.set(k, t) }
     const marks = { items, byTerm: [...termMap.values()].map((t) => ({ ...t, percent: Math.round((1000 * t.obtained) / t.max) / 10 })) };

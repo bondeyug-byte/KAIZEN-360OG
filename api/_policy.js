@@ -30,6 +30,9 @@ function can(who, action, res = {}) {
     case 'join.request': return isStudent;
     case 'join.view':
     case 'join.decide': return hodOf(branch) || teaches(d && d.code) || crOf(d && d.code);
+    // changing division: an enrolled student asks; only the target class teacher or the HOD decides (never a CR)
+    case 'transfer.request': return isStudent && !!who.enrollment;
+    case 'transfer.decide': return hodOf(branch) || teaches(d && d.code);
     case 'join.override':
     case 'enrollment.revoke': return hodOf(branch);
     // class representatives

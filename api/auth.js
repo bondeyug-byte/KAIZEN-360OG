@@ -268,7 +268,7 @@ module.exports = async (req, res) => {
 
     return fail(res, 404, 'NOT_FOUND', 'Unknown route.');
   } catch (err) {
-    console.error('auth function error:', err);
+    console.error('auth function error:', err && (err.code || err.name)); // no request data or numbers in logs
     return fail(res, 502, 'UPSTREAM_UNREACHABLE', "Couldn't reach the sign-in service.");
   }
 };

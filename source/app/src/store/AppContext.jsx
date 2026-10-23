@@ -30,7 +30,7 @@ export function AppProvider({ children }) {
     const next = typeof updater === 'function' ? updater(dbRef.current) : updater
     if (next === dbRef.current) return
     dbRef.current = next
-    if (!saveDb(next)) pushToast('Couldn\u2019t save to browser storage — changes last until you close this tab.', 'warn')
+    if (!saveDb(next)) pushToast('Couldn\u2019t save to browser storage. Changes last until you close this tab.', 'warn')
     setDbState(next)
   }, []) // eslint-disable-line
   useEffect(() => { if (initial.fresh) saveDb(initial.db); if (initial.notice) pushToast(initial.notice, 'warn') }, []) // eslint-disable-line

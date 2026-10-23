@@ -35,11 +35,19 @@ function toContents(messages) {
   return out;
 }
 
+async function underLimit(key, max, sec) {
+  try { const db = require('../_db'); await db.ensureSchema(); return await db.allow(key, max, sec); }
+  catch (e) { return true; } // the database being down must not take the offline-capable assistant with it
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ code: 'method' });
   // Gemini costs money: only signed-in users may use it (others get the built-in offline assistant).
-  if (!require('../_session').getPhone(req)) return res.status(401).json({ code: 'NO_SESSION' });
+  const phone = require('../_session').getPhone(req);
+  if (!phone) return res.status(401).json({ code: 'NO_SESSION' });
+  // Per-number cap so one account can't run up the AI bill (a chat turn can use up to 5 calls).
+  if (!(await underLimit('ai:' + phone, 150, 3600))) return res.status(429).json({ code: 'rate_limited' });
 
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!key) return res.status(503).json({ code: 'no_key' });

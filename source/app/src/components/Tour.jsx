@@ -49,13 +49,13 @@ export default function Tour({ route }) {
   const asDiya = db.profiles.u_diya
 
   const STEPS = [
-    { path: '/', target: '[data-tour="overview"]', title: 'Dashboard: one view of every module',
-      body: 'Classes today come from the timetable, the attendance warning links into the planner, and challenge points, learning credits and seat requests each open their module. Nothing here is typed in twice.' },
+    { path: '/', target: '[data-tour="overview"]', title: 'Overview: your day in one place',
+      body: 'Today’s lectures come first, then work due, attendance and marks, events, your own study list and notices. Every line comes from a saved record and opens the full page.' },
     { path: '/planner', target: '[aria-label="Planner section"]', title: 'Planner: locked grades and what-if',
       body: 'Each subject shows the marks needed for every grade; grades marked Locked can no longer be reached with the internal marks already scored. What-if tries other marks without changing saved data, and an unreachable target suggests a peer tutor for the weakest subject.',
       actions: [{ label: 'Open what-if', run: () => { window.location.hash = '/planner?tab=whatif' } }, { label: 'Back to locked grades', run: () => { window.location.hash = '/planner?tab=marks' } }] },
     { path: '/rides', target: '#ride-ride_2', title: 'Rides: request → confirmed',
-      body: 'Ask for a seat on Diya’s ride from Kurla. The driver is notified, confirms, and your dashboard’s seat-request count updates.',
+      body: 'Ask for a seat on Diya’s ride from Kurla. The driver is notified and confirms; your request status updates on the Rides page.',
       status: myReq ? <Badge tone={myReq.status === 'Confirmed' ? 'ok' : 'warn'}>Your seat: {myReq.status}</Badge> : <Badge>No request yet</Badge>,
       actions: !myReq ? [{ label: 'Request a seat', run: () => runShared((s) => requestSeat(s, 'ride_2', me, new Date()), 'Seat requested. Diya was notified.') }]
         : myReq.status === 'Requested' ? [{ label: 'Simulate: Diya confirms', run: () => runShared((s) => confirmRequest(s, myReq.id, asDiya, new Date()), 'Diya confirmed your seat (simulated).') }] : [] },

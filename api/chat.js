@@ -1,7 +1,9 @@
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
-  if (!require('./_session').getPhone(req)) return res.status(401).json({ offline: true, reason: 'sign in required' });
+  const phone = require('./_session').getPhone(req);
+  if (!phone) return res.status(401).json({ offline: true, reason: 'sign in required' });
+  try { const db = require('./_db'); await db.ensureSchema(); if (!(await db.allow('ai:' + phone, 150, 3600))) return res.status(429).json({ offline: true, reason: 'rate limited' }); } catch (e) { /* fail open: offline answers still work */ }
 
   const key = process.env.GEMINI_API_KEY;
   if (!key) return res.json({ offline: true, reason: 'no key' });

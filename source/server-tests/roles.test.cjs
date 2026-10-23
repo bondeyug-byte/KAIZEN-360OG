@@ -84,7 +84,8 @@ const me = async (n) => (await call(n, 'GET', 'me')).body;
     assert.equal((await me(S1)).enrollment.division_code, 'D2A');
     const again = (await call(T1, 'POST', 'join-decision', { ids: [r1], decision: 'approve' })).body.results[0]; assert.match(again.error, /Already approved/);
   });
-  await t('enrolled student cannot request another class', async () => assert.equal((await call(S1, 'POST', 'join-requests', { division: 'D2B' })).body.code, 'ALREADY_IN_CLASS'));
+  // changed in the 2026-10 audit: an enrolled student may ask to CHANGE division, but only with a reason (see transfer.test.cjs)
+  await t('enrolled student cannot silently join another class (a change needs a reason and approval)', async () => assert.equal((await call(S1, 'POST', 'join-requests', { division: 'D2B' })).body.code, 'REASON_REQUIRED'));
   await t('division capacity enforced (setting)', async () => {
     await run(`update settings set value = '2' where key = 'division_capacity'`); // D2A already has 2 (old student + S1)
     assert.equal((await call(S4, 'POST', 'join-requests', { division: 'D2A' })).body.code, 'DIVISION_FULL');

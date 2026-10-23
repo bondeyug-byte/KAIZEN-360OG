@@ -21,7 +21,7 @@ export function Button({ variant = 'primary', size = 'md', className = '', child
 }
 
 export function Card({ className = '', children, as: Tag = 'section', interactive, ...p }) {
-  return <Tag {...p} className={cx('rounded-2xl border border-white/70 bg-white/85 p-4 shadow-card sm:p-5', interactive && 'lift', className)}>{children}</Tag>
+  return <Tag {...p} className={cx('rounded-xl border border-line bg-surface p-4 sm:p-5', interactive && 'lift', className)}>{children}</Tag>
 }
 
 export function CardTitle({ children, action, eyebrow }) {
@@ -61,7 +61,7 @@ export const inputCls = 'min-h-[40px] w-full rounded-lg border border-line2 bg-s
 
 export function Empty({ icon = 'help', title, children, action }) {
   return (
-    <div className="fade-in flex flex-col items-center gap-2 rounded-xl border border-dashed border-line2 bg-ground/60 px-4 py-8 text-center">
+    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-line2 bg-ground/60 px-4 py-8 text-center">
       <span className="grid h-10 w-10 place-items-center rounded-lg bg-surface text-maroon shadow-card ring-1 ring-line"><Icon name={icon} size={18} /></span>
       <p className="font-semibold">{title}</p>
       {children && <p className="max-w-sm text-sm text-muted">{children}</p>}
@@ -100,7 +100,7 @@ export function PageHeader({ title, subtitle, actions, back }) {
   return (
     <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
-        {back && <a href="#/" className="mb-2 inline-flex items-center gap-1 text-[13px] font-medium text-muted hover:text-maroon"><Icon name="back" size={14} />Dashboard</a>}
+        {back && <a href="#/" className="mb-2 inline-flex items-center gap-1 text-[13px] font-medium text-muted hover:text-maroon"><Icon name="back" size={14} />Home</a>}
         <h1 className="font-display text-[26px] font-semibold leading-tight text-ink sm:text-[30px]">{title}</h1>
         {subtitle && <p className="mt-1 max-w-2xl text-[14.5px] text-muted">{subtitle}</p>}
       </div>

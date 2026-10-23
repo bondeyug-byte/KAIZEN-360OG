@@ -9,6 +9,35 @@ const STUDENT_COLS = new Set(['submissions', 'postSubs', 'completions', 'registr
 const PRIVATE_COLS = ['submissions', 'postSubs']; // visible only to their owner and to staff
 const MAX_ITEM = 900 * 1024;
 
+// What a student may receive. Staff get everything; a student gets
+//  - posts and challenges only for their own division (or with no division audience), plus anything they own;
+//  - attendance sheets reduced to their own mark (never classmates' marks);
+//  - event registrations without other people's form details (name, phone, email, roll), except for events they run.
+function forStudent(rows, me, division) {
+  const mine = (r) => r.owner === me;
+  const self = [me, `acc_${me}`];
+  const forMyClass = (d) => !d.audience || !Array.isArray(d.audience.divisions) || (!!division && d.audience.divisions.includes(division));
+  const myEvents = new Set(rows.filter((r) => r.col === 'events' && mine(r)).map((r) => r.id));
+  const out = [];
+  for (const r of rows) {
+    const d = r.data || {};
+    if (r.col === 'posts' || r.col === 'challenges') { if (mine(r) || forMyClass(d)) out.push(r); continue; }
+    if (r.col === 'attSessions') {
+      const recs = d.records && typeof d.records === 'object' ? d.records : {};
+      const key = self.find((k) => Object.prototype.hasOwnProperty.call(recs, k));
+      if (!key) continue;
+      out.push({ ...r, data: { ...d, records: { [key]: recs[key] } } });
+      continue;
+    }
+    if (r.col === 'registrations' && !mine(r) && !myEvents.has(d.eventId)) {
+      out.push({ ...r, data: { id: d.id, eventId: d.eventId, userId: d.userId, status: d.status, at: d.at } });
+      continue;
+    }
+    out.push(r);
+  }
+  return out;
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
@@ -27,9 +56,10 @@ module.exports = async (req, res) => {
 
     if (req.method === 'GET') {
       const rows = staff
-        ? await db.q('select col, id, data from shared_items order by updated_at asc limit 5000')
-        : await db.q('select col, id, data from shared_items where (col <> all($1::text[]) or owner = $2) order by updated_at asc limit 5000', [PRIVATE_COLS, me]);
-      return res.status(200).json({ ok: true, items: rows.map((r) => ({ c: r.col, id: r.id, data: r.data })) });
+        ? await db.q('select col, id, owner, data from shared_items order by updated_at asc limit 5000')
+        : await db.q('select col, id, owner, data from shared_items where (col <> all($1::text[]) or owner = $2) order by updated_at asc limit 5000', [PRIVATE_COLS, me]);
+      const items = staff ? rows : forStudent(rows, me, who.enrollment ? who.enrollment.division_code : null);
+      return res.status(200).json({ ok: true, items: items.map((r) => ({ c: r.col, id: r.id, data: r.data })) });
     }
 
     if (req.method === 'POST') {
@@ -63,3 +93,4 @@ module.exports = async (req, res) => {
     return res.status(500).json({ ok: false, code: 'SERVER_ERROR', error: 'Something went wrong.' });
   }
 };
+module.exports.forStudent = forStudent;

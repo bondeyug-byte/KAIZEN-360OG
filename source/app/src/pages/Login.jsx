@@ -74,7 +74,7 @@ export default function Login({ next = '/' }) {
         <Brand light />
         <div className="relative z-10 max-w-md">
           <h1 className="font-display text-[46px] font-bold leading-[1.04] drop-shadow">Your First Year.<br /><span className="text-lime">Your Fresh Start.</span></h1>
-          <p className="mt-4 text-lg text-white/85">Lectures by weekday, the marks you need, a ride to campus, the right person to ask, and a 3D map of every floor — in one place.</p>
+          <p className="mt-4 text-lg text-white/85">Lectures by weekday, the marks you need, a ride to campus, the right person to ask, and a 3D map of every floor.</p>
         </div>
         <p className="relative z-10 font-mono text-[12px] tracking-[.3em] text-white/80">ACADEMICS · PEOPLE · CAMPUS LIFE</p>
       </section>
@@ -108,6 +108,7 @@ export default function Login({ next = '/' }) {
                 {(id) => <input id={id} className={inputCls} inputMode="tel" autoComplete="tel" placeholder="98765 43210" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!realAvailable || busy} />}
               </Field>
               <Button type="submit" disabled={!realAvailable || busy}>{busy ? 'Sending…' : 'Send code'}</Button>
+              <p className="text-[12px] text-muted">By signing in you agree to the <a href="#/terms" className="font-semibold text-maroon underline">terms</a>. See how your data is used in the <a href="#/privacy" className="font-semibold text-maroon underline">privacy notice</a> (drafts pending college review).</p>
             </form>
           ) : (
             <form onSubmit={verify} className="flex flex-col gap-3" noValidate>

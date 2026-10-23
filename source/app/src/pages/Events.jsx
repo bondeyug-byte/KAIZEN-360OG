@@ -106,7 +106,7 @@ function EventDetails({ ev, onRequest, onWithdraw, chat }) {
         <div className="rounded-xl border border-line bg-ground/60 p-3 text-[13.5px]">
           <div className="flex flex-wrap items-center justify-between gap-2"><span className="flex items-center gap-2">Your request: <Badge tone={REG_TONE[regStatus(mine)]}>{regStatus(mine)}</Badge></span>
             {[REG.PENDING, REG.APPROVED, REG.WAITLISTED].includes(regStatus(mine)) && <Button size="sm" variant="secondary" onClick={() => onWithdraw(mine)}>Withdraw request</Button>}</div>
-          <p className="mt-1.5 text-muted">{regStatus(mine) === REG.PENDING ? 'Waiting for the organiser to review it.' : regStatus(mine) === REG.APPROVED ? "Approved — you're registered." : regStatus(mine) === REG.WAITLISTED ? "You're on the waitlist. You'll be notified if a place opens." : regStatus(mine) === REG.REJECTED ? `Not approved.${mine.reason ? ' Reason: ' + mine.reason : ''}` : 'You withdrew this request.'}</p>
+          <p className="mt-1.5 text-muted">{regStatus(mine) === REG.PENDING ? 'Waiting for the organiser to review it.' : regStatus(mine) === REG.APPROVED ? "Approved. You're registered." : regStatus(mine) === REG.WAITLISTED ? "You're on the waitlist. You'll be notified if a place opens." : regStatus(mine) === REG.REJECTED ? `Not approved.${mine.reason ? ' Reason: ' + mine.reason : ''}` : 'You withdrew this request.'}</p>
         </div>
       )}
       <div className="flex justify-end">

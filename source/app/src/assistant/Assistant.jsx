@@ -278,7 +278,7 @@ function ResultCard({ tool, result: r }) {
   if (tool === 'buses_near_campus') return (
     <div className={box}>
       {r.stops.slice(0, 2).map((s) => <div key={s.stop} className="mb-1.5"><p className="text-xs font-semibold uppercase tracking-wider text-muted">{s.stop}</p>{s.routes.slice(0, 4).map((x) => <p key={x.route} className="flex gap-2"><b className="w-[64px] flex-none text-[#B4232A]">{x.route}</b><span className="min-w-0 truncate">{x.between}</span></p>)}</div>)}
-      <p className="text-[11px] text-muted">Estimates — check Chalo for live buses.</p>{link}
+      <p className="text-[11px] text-muted">Estimates. Check Chalo for live buses.</p>{link}
     </div>
   )
   if (tool === 'my_schedule') return (

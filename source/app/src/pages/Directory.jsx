@@ -23,7 +23,7 @@ export default function Directory() {
   }, [entries, cat, q])
   return (
     <div>
-      <PageHeader back title="Who do I contact?" subtitle="Faculty, senior mentors, labs, the library and the canteen — with where to find them on campus." />
+      <PageHeader back title="Who do I contact?" subtitle="Faculty, senior mentors, labs, the library and the canteen, with where to find them on campus." />
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <label className="relative min-w-[240px] flex-1"><span className="sr-only">Search the directory</span>
           <Icon name="search" size={17} className="absolute left-3 top-[11px] text-muted" />

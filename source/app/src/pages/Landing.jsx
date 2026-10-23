@@ -1,11 +1,12 @@
 import heroImg from '../assets/campus-hero.jpg'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
+// three.js (the 3D campus) is loaded only when this preview renders, not with the rest of the app
+const CampusPreview = lazy(() => import('../components/CampusPreview.jsx'))
 import { useApp } from '../store/AppContext.jsx'
 import { Brand } from '../components/Layout.jsx'
 import { startTour } from '../components/Tour.jsx'
-import { Badge, cx } from '../components/ui.jsx'
+import { Badge } from '../components/ui.jsx'
 import Icon from '../components/Icon.jsx'
-import { getScene } from '../navigator/scene.js'
 import { allPlaces } from '../navigator/building.js'
 import { STATIONS } from '../lib/journey.js'
 import { nextTrains, TRAIN_SOURCE } from '../lib/transit.js'
@@ -19,10 +20,10 @@ const FEATURES = [
   { icon: 'calendar', title: 'Weekly timetable', text: 'Monday to Sunday, each lecture and lab with its room and a route to it.', href: '#/' },
   { icon: 'book', title: 'Academic planner', text: 'Marks you still need for each grade, SGPA targets and what-if scores.', href: '#/planner' },
   { icon: 'car', title: 'Rides with a live map', text: 'Offer or request seats from Chembur, Kurla or anywhere, with pickup pins and directions.', href: '#/rides' },
-  { icon: 'train', title: 'Trains & buses', text: 'Timetable trains through Kurla and Chembur, a journey planner from any station, BEST buses.', href: '#/commute' },
+  { icon: 'train', title: 'Trains and buses', text: 'Timetable trains through Kurla and Chembur, a journey planner from any station, BEST buses.', href: '#/commute' },
   { icon: 'trophy', title: 'Class challenges', text: 'Briefs as PDFs or images, solution uploads, reviewer feedback and a class leaderboard.', href: '#/challenges' },
   { icon: 'swap', title: 'Peer learning', text: 'Teach a skill, earn an hour of credit, spend it learning from a senior.', href: '#/peer' },
-  { icon: 'bell', title: 'Events & notifications', text: 'Request a place, get notified when the organiser approves, and never miss a deadline.', href: '#/events' },
+  { icon: 'bell', title: 'Events and notifications', text: 'Request a place, get notified when the organiser approves, and never miss a deadline.', href: '#/events' },
 ]
 
 /** Public landing page. Shows only public data: the campus model, timetabled trains and published events. */
@@ -43,8 +44,8 @@ export default function Landing() {
           </nav>
         </header>
         <div className="relative z-10 mx-auto flex w-full max-w-[1240px] flex-1 flex-col justify-center px-5 py-16 sm:px-10">
-          <h1 className="page-in max-w-[760px] font-display text-[44px] font-bold leading-[1.02] tracking-tight drop-shadow-[0_2px_12px_rgba(0,0,0,.35)] sm:text-[68px] lg:text-[78px]">Your First Year.<br />Your Fresh Start.</h1>
-          <p className="mt-4 max-w-[560px] text-[16px] text-white/90 drop-shadow sm:text-[19px]">Find your way around campus. Make every moment count.</p>
+          <h1 className="max-w-[760px] font-display text-[38px] font-semibold leading-[1.08] tracking-tight drop-shadow-[0_2px_12px_rgba(0,0,0,.35)] sm:text-[56px]">Your timetable, attendance and the way to your next room.</h1>
+          <p className="mt-4 max-w-[600px] text-[16px] text-white/90 drop-shadow sm:text-[18px]">Campus360 is a student-built companion for VESIT, Chembur: class timetable, attendance and marks from your teachers, and a 3D map of the main block.</p>
           <div className="mt-7 flex flex-wrap gap-3">
             <a href="#/navigator" className="press glass-btn inline-flex min-h-[52px] items-center gap-2.5 rounded-2xl px-6 text-[16px] font-semibold">Explore Campus <Icon name="chev" size={18} /></a>
             {!signedIn && <a href="#/login?role=student" className="press inline-flex min-h-[52px] items-center gap-2 rounded-2xl bg-lime px-6 text-[16px] font-bold text-lime-ink hover:brightness-95">Student Login</a>}
@@ -57,10 +58,9 @@ export default function Landing() {
                 <span className="text-[13px] text-white/80">{d}</span>
               </a>))}
           </div>}
-          {!signedIn && <p className="mt-3 text-[12.5px] text-white/80"><a href="#/login?role=organiser" className="font-semibold underline underline-offset-2">Council / Club event desk (demo) →</a></p>}
+          {!signedIn && <p className="mt-3 text-[12.5px] text-white/80"><a href="#/login?role=organiser" className="font-semibold underline underline-offset-2">Council or club event desk (demo)</a></p>}
           {!signedIn && <p className="mt-3 text-[12px] text-white/70">Demo sign-in is simulated: roles are enforced inside the app only. A production deployment must check them on a server.</p>}
         </div>
-        <p className="relative z-10 pb-6 text-center font-mono text-[12px] tracking-[.32em] text-white/85">ACADEMICS · PEOPLE · CAMPUS LIFE</p>
       </section>
 
       <section aria-label="Campus360 in numbers" className="border-y border-line bg-surface">
@@ -71,24 +71,22 @@ export default function Landing() {
 
       <section className="mx-auto grid max-w-[1180px] items-center gap-8 px-4 pt-12 sm:px-6 lg:grid-cols-[.9fr_1.1fr]">
         <div>
-          <span className="rounded-full bg-lime-soft px-3 py-1 text-[11px] font-bold uppercase tracking-[.12em] text-lime-ink">Live 3D model</span>
-          <h2 className="mt-3 font-display text-[30px] font-bold leading-tight tracking-tight">Every room, lift and staircase of the main block.</h2>
+          <h2 className="font-display text-[28px] font-semibold leading-tight tracking-tight">Every room, lift and staircase of the main block.</h2>
           <p className="mt-2 text-[15px] leading-relaxed text-muted">Labs on the left, classrooms on the right, the amphitheatre in the curve. Search a room and follow turn-by-turn directions across floors.</p>
           <a href="#/navigator" className="press mt-5 inline-flex min-h-[46px] items-center gap-2 rounded-xl bg-brand px-5 text-[15px] font-semibold text-white hover:bg-brand-dark"><Icon name="cube" size={18} />Open the 3D campus</a>
         </div>
-        <CampusPreview />
+        <WhenVisible placeholder={<div className="h-[340px] rounded-2xl border border-line bg-[#C7DCEC] sm:h-[440px]" aria-hidden="true" />}><CampusPreview /></WhenVisible>
       </section>
 
       <section id="features" className="mx-auto max-w-[1180px] scroll-mt-20 px-4 py-12 sm:px-6">
         <h2 className="font-display text-[28px] font-semibold tracking-tight">Everything a first-year asks about</h2>
         <p className="mt-1 text-[15px] text-muted">Each card opens the real feature. Some need a student sign-in.</p>
-        <div className="stagger mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {FEATURES.map((f) => (
-            <a key={f.title} href={f.href} className="lift group flex flex-col rounded-xl border border-line bg-surface p-4 shadow-card">
-              <span className="mb-3 grid h-10 w-10 place-items-center rounded-lg bg-maroon-50 text-maroon ring-1 ring-maroon/10 transition-colors group-hover:bg-maroon group-hover:text-white"><Icon name={f.icon} size={19} /></span>
+            <a key={f.title} href={f.href} className="lift group flex flex-col rounded-xl border border-line bg-surface p-4">
               <b className="text-[15.5px] font-semibold">{f.title}</b>
               <span className="mt-1 text-[13.5px] leading-relaxed text-muted">{f.text}</span>
-              <span className="mt-auto pt-3 text-[13px] font-semibold text-maroon">Open <Icon name="chev" size={13} className="inline" /></span>
+              <span className="mt-auto pt-3 text-[13px] font-semibold text-maroon group-hover:underline">Open</span>
             </a>
           ))}
         </div>
@@ -129,43 +127,23 @@ export default function Landing() {
       <footer className="border-t border-line bg-surface">
         <div className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-3 px-4 py-6 text-[13px] text-muted sm:px-6">
           <span>Campus360 · a student project for VES Institute of Technology, Chembur. Records marked “Sample” are demo data.</span>
-          <a href="#/about" className="font-semibold text-maroon">Where the data comes from</a>
+          <span className="flex flex-wrap gap-4"><a href="#/privacy" className="font-semibold text-maroon">Privacy</a><a href="#/terms" className="font-semibold text-maroon">Terms</a><a href="#/about" className="font-semibold text-maroon">Where the data comes from</a></span>
         </div>
       </footer>
     </div>
   )
 }
 
-/** The real 3D model, interactive. Clicking a room opens it in the navigator. */
-function CampusPreview() {
-  const host = useRef(null)
-  const scene = useMemo(() => getScene(), [])
-  const [hint, setHint] = useState(null)
+/** Mounts its children only once they scroll near the screen (the 3D preview is below the fold; low-end phones
+ *  shouldn't start WebGL for something the visitor may never scroll to). */
+function WhenVisible({ children, placeholder }) {
+  const ref = useRef(null), [on, setOn] = useState(typeof IntersectionObserver === 'undefined')
   useEffect(() => {
-    if (!scene.ok) return
-    scene.mount(host.current)
-    scene.viewCampus()
-    return () => scene.unmount()
-  }, [scene])
-  // A click (not a drag) opens the full navigator; dragging orbits the model here.
-  const down = useRef(null)
-  const onDown = (e) => { down.current = { x: e.clientX, y: e.clientY } }
-  const onUp = (e) => { const d = down.current; down.current = null; if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) { setHint(true); setTimeout(() => { window.location.hash = '/navigator' }, 400) } }
-  return (
-    <div className="relative">
-      <div ref={host} onPointerDown={onDown} onPointerUp={onUp} role="img" aria-label="Interactive 3D model of the VESIT main building" className={cx('h-[340px] overflow-hidden rounded-2xl border border-line bg-[#C7DCEC] shadow-pop sm:h-[440px]', !scene.ok && 'grid place-items-center')}>
-        {!scene.ok && <p className="p-6 text-center text-sm text-muted">3D needs WebGL, which this browser has turned off. <a href="#/navigator" className="font-semibold text-maroon">Open the floor plan instead</a>.</p>}
-      </div>
-      <div className="pointer-events-none absolute left-3 top-3 flex flex-wrap gap-1.5">
-        <span className="rounded-full bg-surface/90 px-2.5 py-1 text-[12px] font-semibold shadow-card">Live 3D model</span>
-        <span className="rounded-full bg-surface/90 px-2.5 py-1 text-[12px] font-medium text-muted shadow-card">Drag to orbit · click to open the navigator</span>
-      </div>
-      {hint && <div role="status" className="fade-in absolute bottom-3 left-3 rounded-lg bg-maroon px-3 py-2 text-[13px] font-semibold text-white shadow-pop">Opening the 3D navigator…</div>}
-      <div className="pointer-events-none absolute bottom-3 right-3 flex gap-1.5 text-[11.5px] font-semibold">
-        <span className="rounded-md bg-[#FBF0DC] px-2 py-0.5 text-[#8A5A0E] shadow-card">Labs · west</span><span className="rounded-md bg-[#E7F0FB] px-2 py-0.5 text-[#1F4F8A] shadow-card">Classrooms · east</span>
-      </div>
-    </div>
-  )
+    if (on || !ref.current) return
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { setOn(true); io.disconnect() } }, { rootMargin: '200px' })
+    io.observe(ref.current); return () => io.disconnect()
+  }, [on])
+  return <div ref={ref}>{on ? <Suspense fallback={placeholder}>{children}</Suspense> : placeholder}</div>
 }
 
 function CanteenPreview({ id }) {
@@ -176,7 +154,7 @@ function CanteenPreview({ id }) {
   const min = Math.min(...dishes.map((d) => d.price))
   const picks = [...dishes].sort((a, b) => a.price - b.price).slice(0, 4)
   return (
-    <a href={`#/canteen?c=${id}`} className="lift flex flex-col rounded-2xl border border-white/70 bg-white/85 p-5 shadow-card">
+    <a href={`#/canteen?c=${id}`} className="lift flex flex-col rounded-xl border border-line bg-surface p-5">
       <span className="flex items-center justify-between"><b className="font-display text-[19px] font-semibold">{info.name}</b>{info.partial && <Badge tone="warn">Partial menu</Badge>}</span>
       <small className="text-[12.5px] text-muted">{dishes.length} dishes · {cats.length} categories · from ₹{min}</small>
       <ul className="mt-3 flex flex-col gap-1 text-[13.5px]">{picks.map((d) => <li key={d.id} className="flex justify-between gap-2"><span className="truncate">{d.name}</span><b className="text-brand">₹{d.price}</b></li>)}</ul>

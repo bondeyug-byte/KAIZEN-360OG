@@ -178,7 +178,7 @@ function TutorReviews({ tutor }) {
   const [text, setText] = useState(mine?.text || '')
   const [err, setErr] = useState('')
   const self = tutor.userId === me.id
-  const save = (e) => { e.preventDefault(); const r = runShared((s) => saveTutorReview(s, tutor.userId, me, { rating, text }, new Date()), mine ? 'Review updated.' : 'Thanks — review posted.'); setErr(r.ok ? '' : r.error) }
+  const save = (e) => { e.preventDefault(); const r = runShared((s) => saveTutorReview(s, tutor.userId, me, { rating, text }, new Date()), mine ? 'Review updated.' : 'Thanks, review posted.'); setErr(r.ok ? '' : r.error) }
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2"><Stars value={avg} size={18} /><span className="text-[14px]">{avg == null ? 'No reviews yet' : <><b>{avg}</b> from {list.length} review{list.length === 1 ? '' : 's'}</>}</span></div>

@@ -48,7 +48,7 @@ function division(who, v) { const code = txt(v, 10).toUpperCase(); if (!who.divi
 async function getMe(who) {
   await db.q('insert into account_state (account_id) values ($1) on conflict (account_id) do nothing', [who.account.id]);
   const [state] = await db.q('select profile, data, version, updated_at from account_state where account_id = $1', [who.account.id]);
-  const [joinRequest] = await db.q(`select id, division_code, status, note, created_at, decided_at from join_requests where student_id = $1 order by created_at desc limit 1`, [who.account.id]);
+  const [joinRequest] = await db.q(`select id, division_code, status, kind, from_division, reason, note, created_at, decided_at from join_requests where student_id = $1 order by created_at desc limit 1`, [who.account.id]);
   const [crRequest] = await db.q(`select id, division_code, status, note, created_at from cr_requests where student_id = $1 order by created_at desc limit 1`, [who.account.id]);
   const reviewDivs = allowedDivisions(who, 'join.decide');
   const [{ n: pendingJoins }] = reviewDivs.length ? await db.q(`select count(*)::int as n from join_requests where status = 'pending' and division_code = any($1) and student_id <> $2`, [reviewDivs, who.account.id]) : [{ n: 0 }];
@@ -98,15 +98,28 @@ async function catalog(who) {
 async function joinRequest(who, req) {
   need(who, 'join.request', {}, who.base === 'student' ? undefined : 'Teacher and HOD numbers cannot join a class as a student.');
   await limit(`join:${who.account.id}`, 10, 3600);
-  const div = division(who, body(req).division);
-  if (who.enrollment) throw conflict('ALREADY_IN_CLASS', `You are already in ${who.enrollment.division_code}. Ask your HOD to move you.`);
-  const [pending] = await db.q(`select division_code from join_requests where student_id = $1 and status = 'pending'`, [who.account.id]);
-  if (pending) throw conflict('PENDING_EXISTS', `You already asked to join ${pending.division_code}. Cancel that request first.`);
+  const b = body(req);
+  const div = division(who, b.division);
+  const [pending] = await db.q(`select division_code, kind from join_requests where student_id = $1 and status = 'pending'`, [who.account.id]);
+  if (pending) throw conflict('PENDING_EXISTS', `You already asked to ${pending.kind === 'transfer' ? 'move to' : 'join'} ${pending.division_code}. Cancel that request first.`);
+  // Already in a class: this becomes a change-of-division request (same branch and year), decided by the
+  // target class teacher or the HOD. The student stays in the current class until it is approved.
+  let transfer = null;
+  if (who.enrollment) {
+    need(who, 'transfer.request', {});
+    const from = who.enrollment.division_code, cur = who.divisions.get(from), to = who.divisions.get(div);
+    if (div === from) throw bad('SAME_DIVISION', `You are already in ${div}.`);
+    if (!cur || cur.year_id !== to.year_id || cur.branch_code !== to.branch_code) throw bad('OTHER_BRANCH_OR_YEAR', `You can move only to another division of your own branch and year. For a branch or year change, ask your HOD.`);
+    const reason = txt(b.reason, 300);
+    if (reason.length < 5) throw bad('REASON_REQUIRED', 'Say briefly why you need to change division.');
+    transfer = { from, reason };
+  }
   const cap = await setting('division_capacity', 65);
   const [{ n }] = await db.q(`select count(*)::int as n from class_enrollments where division_code = $1 and status = 'active'`, [div]);
   if (n >= cap) throw conflict('DIVISION_FULL', `${div} is full (${cap} students). Check your division or contact your HOD.`);
-  const [r] = await db.q(`insert into join_requests (student_id, division_code) values ($1, $2) returning id, division_code, status, created_at`, [who.account.id, div]);
-  await db.audit(who.account.id, 'join.request', r.id, { division: div }, branchOf(who, div));
+  const [r] = await db.q(`insert into join_requests (student_id, division_code, kind, from_division, reason) values ($1, $2, $3, $4, $5)
+    returning id, division_code, status, kind, from_division, reason, created_at`, [who.account.id, div, transfer ? 'transfer' : 'join', transfer ? transfer.from : null, transfer ? transfer.reason : '']);
+  await db.audit(who.account.id, transfer ? 'transfer.request' : 'join.request', r.id, transfer ? { division: div, from: transfer.from } : { division: div }, branchOf(who, div));
   return { joinRequest: r };
 }
 async function cancelJoin(who, req) {
@@ -124,13 +137,15 @@ async function listJoins(who, req) {
   const history = req.query.status === 'decided';
   const showPhone = who.base !== 'student'; // class reps never see phone numbers
   const rows = await db.q(
-    `select j.id, j.student_id, j.division_code, j.status, j.note, j.created_at, j.decided_at, j.decided_as, a.name, a.phone,
+    `select j.id, j.student_id, j.division_code, j.status, j.kind, j.from_division, j.reason, j.note, j.created_at, j.decided_at, j.decided_as, a.name, a.phone,
             s.profile->>'roll' as roll, dec.name as decided_by_name
        from join_requests j join accounts a on a.id = j.student_id left join account_state s on s.account_id = j.student_id
        left join accounts dec on dec.id = j.decided_by
       where j.division_code = any($1) and ${history ? `j.status in ('approved', 'rejected')` : `j.status = 'pending'`}
-      order by ${history ? 'j.decided_at desc' : 'j.created_at asc'} limit ${PAGE + 1} offset $2`, [divs, page(req) * PAGE]);
-  const [{ n }] = await db.q(`select count(*)::int as n from join_requests where status = 'pending' and division_code = any($1)`, [scope]);
+        and (j.kind = 'join' or $3::boolean)
+      order by ${history ? 'j.decided_at desc' : 'j.created_at asc'} limit ${PAGE + 1} offset $2`, [divs, page(req) * PAGE, showPhone]);
+  // class reps see new-student requests only; changes of division (with the student's reason) go to staff
+  const [{ n }] = await db.q(`select count(*)::int as n from join_requests where status = 'pending' and division_code = any($1) and (kind = 'join' or $2::boolean)`, [scope, showPhone]);
   return { requests: rows.slice(0, PAGE).map(({ phone, ...r }) => ({ ...r, phone: showPhone ? mask(phone) : undefined, self: r.student_id === who.account.id })), more: rows.length > PAGE, pendingTotal: n };
 }
 /** Accept/reject up to 50 requests. The first valid decision wins: every update is conditional on the status. */
@@ -144,16 +159,44 @@ async function decideJoins(who, req) {
   const cap = await setting('division_capacity', 65);
   const results = [];
   for (const id of ids) {
-    const [r] = await db.q('select id, student_id, division_code, status from join_requests where id = $1', [id]);
+    const [r] = await db.q('select id, student_id, division_code, status, kind, from_division from join_requests where id = $1', [id]);
     const fail = (error) => results.push({ id, ok: false, error });
     if (!r) { fail('Request not found.'); continue; }
     if (!can(who, 'join.decide', { division: r.division_code })) { fail(`You can't manage ${r.division_code}.`); continue; }
     if (r.student_id === who.account.id) { fail('You cannot decide your own request.'); continue; }
-    const hodOverride = can(who, 'join.override', { division: r.division_code });
+    const isTransfer = r.kind === 'transfer';
+    if (isTransfer && !can(who, 'transfer.decide', { division: r.division_code })) { fail(`A change of division into ${r.division_code} is decided by its class teacher or the HOD.`); continue; }
+    const hodOverride = !isTransfer && can(who, 'join.override', { division: r.division_code });
     const from = hodOverride && decision === 'approved' ? ['pending', 'rejected'] : ['pending'];
     const as = roleName(who, r.division_code);
     let done;
-    if (decision === 'approved') {
+    if (decision === 'approved' && isTransfer) {
+      // One statement: approve, archive the old class, end any CR role there, open the new class.
+      // If the student is no longer in from_division (or the target is full) nothing changes.
+      done = await db.q(
+        `with r as (
+           update join_requests j set status = 'approved', decided_by = $2, decided_at = now(), decided_as = $3, note = $4
+            where j.id = $1 and j.status = 'pending' and j.kind = 'transfer'
+              and exists (select 1 from class_enrollments e where e.student_id = j.student_id and e.division_code = j.from_division and e.status = 'active')
+              and (select count(*) from class_enrollments e where e.division_code = j.division_code and e.status = 'active') < $5
+            returning j.id, j.student_id, j.division_code, j.from_division),
+         old as (
+           update class_enrollments e set status = 'archived', archived_by = $2, archived_at = now()
+             from r where e.student_id = r.student_id and e.division_code = r.from_division and e.status = 'active'
+           returning e.student_id),
+         cr as (
+           update cr_assignments c set active = false, removed_by = $2, removed_at = now()
+             from r where c.student_id = r.student_id and c.division_code = r.from_division and c.active
+           returning c.student_id),
+         crq as (
+           update cr_requests q set status = 'cancelled', decided_at = now(), note = 'Moved to another division'
+             from r where q.student_id = r.student_id and q.division_code = r.from_division and q.status = 'pending'
+           returning q.id)
+         insert into class_enrollments (student_id, division_code, year_id, approved_by, request_id)
+         select r.student_id, r.division_code, d.year_id, $2, r.id from r join old on old.student_id = r.student_id join divisions d on d.code = r.division_code
+         on conflict (student_id, division_code, year_id) do update set status = 'active', approved_by = excluded.approved_by, approved_at = now(), request_id = excluded.request_id, archived_by = null, archived_at = null
+         returning student_id`, [id, who.account.id, as, note, cap]);
+    } else if (decision === 'approved') {
       done = await db.q(
         `with r as (
            update join_requests j set status = 'approved', decided_by = $2, decided_at = now(), decided_as = $4, note = $5
@@ -171,10 +214,10 @@ async function decideJoins(who, req) {
     if (!done.length) {
       const [now] = await db.q(`select j.status, a.name from join_requests j left join accounts a on a.id = j.decided_by where j.id = $1`, [id]);
       const [{ n }] = await db.q(`select count(*)::int as n from class_enrollments where division_code = $1 and status = 'active'`, [r.division_code]);
-      fail(now.status !== r.status || !from.includes(now.status) ? `Already ${now.status}${now.name ? ` by ${now.name}` : ''}.` : n >= cap ? `${r.division_code} is full (${cap}).` : 'This student is already in a class this year.');
+      fail(now.status !== r.status || !from.includes(now.status) ? `Already ${now.status}${now.name ? ` by ${now.name}` : ''}.` : n >= cap ? `${r.division_code} is full (${cap}).` : isTransfer ? `This student is no longer in ${r.from_division}.` : 'This student is already in a class this year.');
       continue;
     }
-    await db.audit(who.account.id, `join.${decision === 'approved' ? 'approve' : 'reject'}`, id, { division: r.division_code, by: as, override: r.status !== 'pending' }, branchOf(who, r.division_code));
+    await db.audit(who.account.id, `${isTransfer ? 'transfer' : 'join'}.${decision === 'approved' ? 'approve' : 'reject'}`, id, { division: r.division_code, ...(isTransfer ? { from: r.from_division } : {}), by: as, override: r.status !== 'pending' }, branchOf(who, r.division_code));
     results.push({ id, ok: true, status: decision });
   }
   return { results, approved: results.filter((x) => x.ok).length };

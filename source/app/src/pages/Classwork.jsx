@@ -6,15 +6,25 @@ import { FilePicker, ResourceViewer } from './Challenges.jsx'
 import { KIND, STATUS, SUBST, visiblePosts, getPost, mySubs, canSubmitAssignment, submitAssignment } from '../lib/posts.js'
 import { putFile, deleteFile, checkFile } from '../lib/files.js'
 import { hasAcademicIdentity, divisionInfo } from '../data/academics.js'
+import { Feed } from '../components/CloudPortal.jsx'
 
 const TONE = { assignment: 'warn', notice: 'info', lecture: 'maroon', document: 'neutral' }
 
 /** Student view of everything teachers sent to the student's own division. Access checks: src/lib/posts.js. */
 export default function Classwork({ query = {} }) {
-  const { db, me, now } = useApp()
+  const { db, me, now, session } = useApp()
   const [kind, setKind] = useState('all')
   const [openId, setOpenId] = useState(query.id || null)
   useEffect(() => { if (query.id) setOpenId(query.id) }, [query.id])
+  // Phone accounts: classwork is what teachers post on the college server for the confirmed division.
+  // (The browser sample assignments below are demo data and are never shown to a real account.)
+  if (session.mode === 'minimoth') return (
+    <div>
+      <PageHeader back title="Classwork" subtitle={session.enrollment ? `Announcements and materials your teachers posted for ${session.enrollment.division_code}.` : 'Join your class to see what your teachers post.'} />
+      {session.enrollment ? <Feed key={session.enrollment.division_code} /> : <Empty icon="user" title="Not in a class yet" action={<a href="#/portal?tab=class" className="font-semibold text-maroon">Join your class</a>}>Your teachers post to a division, so classwork appears once your class is approved.</Empty>}
+      <p className="mt-4 text-[12.5px] text-muted">Online assignment hand-in is not on the college server yet. Your teacher will tell you how to submit.</p>
+    </div>
+  )
   if (!hasAcademicIdentity(me)) return <div className="py-8"><Empty icon="user" title="Complete your academic profile" action={<a href="#/profile" className="font-semibold text-maroon">Open profile</a>}>Classwork is sent to your year, branch and division. Add them to your profile first.</Empty></div>
   const list = visiblePosts(db.shared, me, now).filter((p) => kind === 'all' || p.kind === kind)
   const open = openId ? getPost(db.shared, openId, me, now) : null

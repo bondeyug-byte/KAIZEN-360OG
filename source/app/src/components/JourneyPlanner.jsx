@@ -131,7 +131,7 @@ export default function JourneyPlanner({ initialFrom }) {
         </div>
       </Card>
       <div className="flex flex-col gap-3">
-        {!from ? <Empty icon="train" title="Where are you coming from?">Pick any station on the Central main line, Harbour line, Trans-Harbour or Uran line — {STATIONS.length} stations.</Empty>
+        {!from ? <Empty icon="train" title="Where are you coming from?">Pick any station on the Central main line, Harbour line, Trans-Harbour or Uran line: {STATIONS.length} stations.</Empty>
           : plan?.error ? <Empty icon="alert" title={plan.error} />
           : plan && (
             <>

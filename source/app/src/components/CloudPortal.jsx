@@ -74,7 +74,8 @@ export function MyClass() {
   if (e) return (
     <Card className="max-w-xl">
       <CardTitle eyebrow="Your class">{e.division_code}</CardTitle>
-      <p className="mt-1 text-[13.5px] text-muted">Approved {relTime(e.approved_at)}. You see this class’s timetable, notices and reminders. To move class, ask your HOD.</p>
+      <p className="mt-1 text-[13.5px] text-muted">Approved {relTime(e.approved_at)}. You see this class’s timetable, notices, reminders and attendance.</p>
+      <ChangeDivision e={e} jr={jr} cat={cat} busy={busy} setBusy={setBusy} />
       <div className="mt-4 border-t border-line pt-3">
         <h3 className="text-[14px] font-semibold">Class representative</h3>
         {isCr ? <p className="mt-1 text-[13.5px]"><Badge tone="ok">You are a class rep</Badge> Use the CR Tools tab.</p>
@@ -97,6 +98,54 @@ export function MyClass() {
         </form>)}
       <p className="mt-4 text-[12.5px] text-muted">Phone sign-in proves you own the number, not that you are in the class, so a teacher, your class rep or the HOD approves each request.</p>
     </Card>
+  )
+}
+
+/* ---------------- Student: change division (request → target class teacher or HOD approves) ---------------- */
+function ChangeDivision({ e, jr, cat, busy, setBusy }) {
+  const { pushToast, refreshAccount } = useApp()
+  const [open, setOpen] = useState(false)
+  const [to, setTo] = useState('')
+  const [reason, setReason] = useState('')
+  const [err, setErr] = useState('')
+  const pending = jr?.status === 'pending' && jr.kind === 'transfer' ? jr : null
+  const last = !pending && jr?.kind === 'transfer' && jr.status === 'rejected' ? jr : null
+  const cur = (cat.data?.divisions || []).find((d) => d.code === e.division_code)
+  // only divisions of the same branch and year; the server checks this again
+  const options = (cat.data?.divisions || []).filter((d) => cur && d.code !== e.division_code && d.branch_code === cur.branch_code && d.year_id === cur.year_id)
+  const after = async () => { await refreshAccount(); refreshTimetable() }
+  const submit = busyWrap(setBusy, async () => {
+    setErr('')
+    if (!to) return setErr('Choose the division you should be in.')
+    if (reason.trim().length < 5) return setErr('Say briefly why you need to change division.')
+    try { await api('join-requests', { method: 'POST', body: { division: to, reason: reason.trim() } }); pushToast(`Request sent to move to ${to}. You stay in ${e.division_code} until a teacher of ${to} or the HOD approves.`); setOpen(false); setTo(''); setReason(''); await after() }
+    catch (x) { setErr(x.message) }
+  })
+  const cancel = busyWrap(setBusy, async () => { try { await api('join-requests', { method: 'DELETE', query: { id: pending.id } }); pushToast('Change request cancelled.'); await after() } catch (x) { pushToast(x.message, 'bad') } })
+  return (
+    <div className="mt-4 border-t border-line pt-3">
+      <h3 className="text-[14px] font-semibold">Change division</h3>
+      {pending ? (
+        <div className="mt-1 text-[13.5px]">
+          <p className="flex flex-wrap items-center gap-2"><Badge tone="warn">Waiting for approval</Badge>Move from <b>{pending.from_division}</b> to <b>{pending.division_code}</b> · sent {relTime(pending.created_at)}</p>
+          <p className="mt-1 text-[13px] text-muted">You stay in {e.division_code} until a teacher of {pending.division_code} or the HOD approves. Your attendance history moves with you.</p>
+          <Button className="mt-2" size="sm" variant="ghost" disabled={busy} onClick={cancel}>Cancel request</Button>
+        </div>
+      ) : !open ? (
+        <div className="mt-1 text-[13.5px]">
+          {last && <p className="mb-2"><Badge tone="bad">Not approved</Badge> move to {last.division_code}{last.note ? `: “${last.note}”` : ''}</p>}
+          <p className="text-[13px] text-muted">Chose the wrong division? Ask to move to another division of your branch and year.</p>
+          <Button className="mt-2" size="sm" variant="secondary" onClick={() => setOpen(true)}>Request a change</Button>
+        </div>
+      ) : (
+        <form className="mt-2 flex flex-col gap-3" onSubmit={(ev) => { ev.preventDefault(); submit() }} noValidate>
+          <Loading s={cat}>{!options.length ? <p className="text-[13px] text-muted">There is no other division in your branch and year. For a branch or year change, contact your HOD.</p> : (
+            <Field label="Move to">{(id) => <select id={id} className={inputCls} value={to} onChange={(ev) => setTo(ev.target.value)}><option value="">Choose a division</option>{options.map((d) => <option key={d.code} value={d.code}>{d.code}{d.name ? ` · ${d.name}` : ''}</option>)}</select>}</Field>)}</Loading>
+          <Field label="Reason" hint="Your teacher sees this. Class reps don’t.">{(id) => <textarea id={id} className={cx(inputCls, 'min-h-[72px] py-2')} maxLength={300} value={reason} onChange={(ev) => setReason(ev.target.value)} placeholder="For example: I selected D2A by mistake; my roll number is in D2B." />}</Field>
+          {err && <p role="alert" className="text-[13px] text-bad">{err}</p>}
+          <div className="flex gap-2"><Button type="submit" size="sm" disabled={busy || !options.length}>{busy ? 'Sending…' : 'Send request'}</Button><Button type="button" size="sm" variant="ghost" onClick={() => { setOpen(false); setErr('') }}>Cancel</Button></div>
+        </form>)}
+    </div>
   )
 }
 
@@ -139,14 +188,16 @@ export function JoinRequests({ hod = false, title = 'Join requests' }) {
             <li key={r.id} className="flex flex-wrap items-center gap-2 border-t border-line py-2">
               {tab === 'pending' && !r.self && <input type="checkbox" aria-label={`Select ${r.name || 'student'}`} checked={picked.includes(r.id)} onChange={(e) => setPicked(e.target.checked ? [...picked, r.id].slice(0, 50) : picked.filter((x) => x !== r.id))} />}
               <span className="font-semibold">{r.name || 'No name yet'}</span>
+              {r.kind === 'transfer' && <Badge tone="info">Change from {r.from_division}</Badge>}
               <span className="text-muted">{r.roll ? `Roll ${r.roll} · ` : ''}{r.division_code}{r.phone ? ` · ${r.phone}` : ''} · {relTime(tab === 'pending' ? r.created_at : r.decided_at, now)}</span>
+              {r.kind === 'transfer' && r.reason && <span className="basis-full text-[12.5px] text-muted">Reason: “{r.reason}”</span>}
               {tab !== 'pending' && <Badge tone={STATUS_TONE[r.status]}>{r.status}</Badge>}
               {r.decided_by_name && <span className="text-[12px] text-muted">by {r.decided_by_name} ({r.decided_as}){r.note ? ` · “${r.note}”` : ''}</span>}
               <span className="ml-auto flex flex-wrap gap-2">
                 {r.self ? <span className="text-[12px] text-muted">Your own request</span> : r.status === 'pending' ? (rejecting === r.id ? (
                   <><input aria-label="Reason (optional)" className={cx(inputCls, 'h-9 w-48')} placeholder="Reason (optional)" value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} /><Button size="sm" variant="danger" disabled={busy} onClick={() => decide([r.id], 'reject', note)}>Reject</Button><Button size="sm" variant="ghost" onClick={() => setRejecting(null)}>Cancel</Button></>
                 ) : (<><Button size="sm" disabled={busy} onClick={() => decide([r.id], 'approve')}>Accept</Button><Button size="sm" variant="secondary" disabled={busy} onClick={() => { setRejecting(r.id); setNote('') }}>Reject</Button></>))
-                  : hod && r.status === 'rejected' ? <Button size="sm" variant="secondary" disabled={busy} onClick={() => decide([r.id], 'approve')}>Override: accept</Button>
+                  : hod && r.status === 'rejected' && r.kind !== 'transfer' ? <Button size="sm" variant="secondary" disabled={busy} onClick={() => decide([r.id], 'approve')}>Override: accept</Button>
                     : hod && r.status === 'approved' ? <ConfirmButton size="sm" variant="ghost" confirmText="Remove from class" onConfirm={() => revoke(r)}>Remove from class</ConfirmButton> : null}
               </span>
             </li>))}
@@ -432,7 +483,7 @@ export function TimetableSchedule() {
       </Card>
       {res && !res.ok && (
         <Card className="max-w-3xl ring-1 ring-[#F6C9C3]">
-          <CardTitle eyebrow={res.fileName}>{res.errors.length} problem{res.errors.length > 1 ? 's' : ''} — nothing was published</CardTitle>
+          <CardTitle eyebrow={res.fileName}>{res.errors.length} problem{res.errors.length > 1 ? 's' : ''}: nothing was published</CardTitle>
           <p className="mt-1 text-[13px] text-muted">The current timetable is unchanged.</p>
           <ul className="mt-3 max-h-[420px] overflow-auto text-[13.5px]">{res.errors.map((e, i) => <li key={i} className="border-t border-line py-1.5"><span className="font-semibold">{e.sheet ? `Sheet "${e.sheet}"` : 'File'}{e.cell ? `, cell ${e.cell}` : e.row ? `, row ${e.row}` : ''}:</span> {e.message}</li>)}</ul>
           {res.canFilter && upload && <Button className="mt-3" variant="secondary" onClick={() => check(upload, true)}>Check only my divisions</Button>}

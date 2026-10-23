@@ -18,7 +18,7 @@ const UNIQUE = [
 const DATA = [
   ['Trains (times)', 'Central Railway public timetables, April 2026', 'Verified source', 'ok'],
   ['Stations & lines', `${NETWORK_SOURCE.text}; checked ${NETWORK_SOURCE.checked}`, 'Verified source', 'ok'],
-  ['BEST buses', 'Moovit stop pages + VES "how to reach" page', 'Partial — waits are estimates', 'warn'],
+  ['BEST buses', 'Moovit stop pages + VES "how to reach" page', 'Partial: waits are estimates', 'warn'],
   ['Campus facts', `${KNOWLEDGE.filter((k) => k.verified).length} sourced entries (Wikipedia, VES)`, 'Verified source', 'ok'],
   ['Building shape', 'Photos and walkthrough videos', 'Inferred from photos', 'warn'],
   ['Room numbers & labs', `${allPlaces().length} mapped spaces; labs west, classrooms east (team rule)`, 'Placeholder', 'demo'],
@@ -49,8 +49,8 @@ const AUDIT = [
   ['Server-side storage and permissions (database phase)', 'Needs shared backend'],
   ['Mobile bottom sheet (drag or tap), sliding tabs and panels', 'Pass'],
   ['Challenges & live leaderboard, peer credits & sessions, events', 'Pass'],
-  ['Voice assistant — offline mode, confirmations, 4 languages', 'Pass'],
-  ['Voice assistant — live Gemini / Claude / ChatGPT', 'Needs API key'],
+  ['Voice assistant: offline mode, confirmations, 4 languages', 'Pass'],
+  ['Voice assistant: live Gemini / Claude / ChatGPT', 'Needs API key'],
   ['Phone OTP sign-in (MiniMoth)', 'Needs API key'],
   ['MCP server for Claude / ChatGPT', 'Needs deployment'],
 ]
@@ -59,7 +59,7 @@ export default function About() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader back title="About Campus360" subtitle="What it does, what makes it different, where the data comes from, and what has been tested." />
-      <section aria-label="What makes it different" className="stagger grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <section aria-label="What makes it different" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {UNIQUE.map((u) => (
           <Card key={u.title} interactive>
             <span className="mb-3 grid h-10 w-10 place-items-center rounded-lg bg-maroon-50 text-maroon ring-1 ring-maroon/10"><Icon name={u.icon} size={19} /></span>
@@ -91,9 +91,16 @@ export default function About() {
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-[12px] text-muted">Plus 120 automated tests and 80+ browser checks covering the maths, rides, credits, timetables, journey planner, campus structure, event approvals, notifications, uploads, assistant, AI proxy, MiniMoth sign-in proxy and MCP server.</p>
+          <p className="mt-3 text-[12px] text-muted">Unit, server and browser tests run on every change; physical phones and live OTP delivery are tested separately.</p>
         </Card>
       </div>
+      <Card>
+        <CardTitle eyebrow="Credits">Open-source software, fonts and map data</CardTitle>
+        <ul className="grid gap-x-6 gap-y-1 text-[13.5px] sm:grid-cols-2">
+          {[['React and React DOM 18.3', 'MIT licence, © Meta Platforms'], ['three.js 0.160', 'MIT licence, © three.js authors'], ['Leaflet 1.9.4', 'BSD 2-Clause licence, © Volodymyr Agafonkin, CloudMade'], ['fflate 0.8', 'MIT licence, © Arjun Barrett'], ['IBM Plex Sans and Mono', 'SIL Open Font Licence 1.1, © IBM'], ['Map tiles and data', '© OpenStreetMap contributors (ODbL), © CARTO']].map(([a, b]) => <li key={a} className="flex flex-wrap justify-between gap-2 border-t border-line py-1.5"><b className="font-semibold">{a}</b><span className="text-muted">{b}</span></li>)}
+        </ul>
+        <p className="mt-3 text-[12.5px] text-muted">Campus photographs: source and permission to be confirmed by the project team before public launch. <a href="#/privacy" className="font-semibold text-maroon">Privacy notice</a> · <a href="#/terms" className="font-semibold text-maroon">Terms</a></p>
+      </Card>
     </div>
   )
 }

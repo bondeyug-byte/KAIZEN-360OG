@@ -22,12 +22,12 @@ export default function Portal({ query = {} }) {
   if (!session.cloud) return <div className="py-10">{sync?.status === 'loading' ? <Spinner label="Connecting to the college server" /> : <Empty icon="refresh" title="College server not reachable">{sync?.message || 'Try again in a moment.'}</Empty>}</div>
   return (
     <div>
-      <PageHeader title="College portal" subtitle="Your class, timetable, notices and reminders — the same on every device."
+      <PageHeader title="College portal" subtitle="Your class, timetable, notices and reminders, the same on every device."
         actions={<Badge tone={session.enrollment ? 'ok' : 'warn'}>{session.enrollment ? session.enrollment.division_code : session.joinRequest?.status === 'pending' ? 'Request pending' : 'Not in a class yet'}{cr.length ? ' · Class rep' : ''}</Badge>} />
       <div className="mb-4 overflow-x-auto"><Segmented label="Portal section" value={active} onChange={setTab} options={tabs.map(([value, label]) => ({ value, label }))} /></div>
       {active === 'class' && <div className="flex flex-col gap-4"><MyClass />{session.enrollment && <MyParents />}</div>}
-      {active === 'record' && <MyRecord />}
-      {active === 'feed' && <Feed />}
+      {active === 'record' && <MyRecord key={session.enrollment?.division_code || 'none'} />}
+      {active === 'feed' && <Feed key={session.enrollment?.division_code || 'none'} />}
       {active === 'tt' && <MyTimetable />}
       {active === 'cr' && <CrTools division={cr[0]} />}
     </div>
@@ -38,7 +38,7 @@ function CrTools({ division }) {
   const [tab, setTab] = useState('requests')
   return (
     <div>
-      <p className="mb-3 text-[13.5px] text-muted">Class representative of <Badge tone="info">{division}</Badge> — you can manage this class only.</p>
+      <p className="mb-3 text-[13.5px] text-muted">Class representative of <Badge tone="info">{division}</Badge>. You can manage this class only.</p>
       <div className="mb-4 overflow-x-auto"><Segmented label="CR tools" value={tab} onChange={setTab} options={[{ value: 'requests', label: 'Join requests' }, { value: 'notice', label: 'Post notice' }, { value: 'reminder', label: 'Set reminder' }, { value: 'list', label: 'Class list' }, { value: 'mine', label: 'My posts' }]} /></div>
       {tab === 'requests' && <JoinRequests title={`Join requests for ${division}`} />}
       {tab === 'notice' && <Composer crDivision={division} />}

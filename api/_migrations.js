@@ -310,5 +310,16 @@ module.exports = [
         seen_at timestamptz not null default now(), primary key (parent_phone, student_id))`,
     ],
   },
+  {
+    id: 5,
+    name: 'division change requests: join_requests.kind, from_division, reason (additive)',
+    up: [
+      // A student already in a class asks to move to another division of the same year; the target class
+      // teacher or the branch HOD approves. Existing rows stay 'join'. Nothing is dropped or rewritten.
+      `alter table join_requests add column if not exists kind text not null default 'join' check (kind in ('join', 'transfer'))`,
+      `alter table join_requests add column if not exists from_division text references divisions(code)`,
+      `alter table join_requests add column if not exists reason text not null default ''`,
+    ],
+  },
 ];
 module.exports.FE_DIVISIONS = FE_DIVISIONS;
