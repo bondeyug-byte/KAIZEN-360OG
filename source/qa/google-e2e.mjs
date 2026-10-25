@@ -124,7 +124,7 @@ check('10. after sign-out, a protected route shows the sign-in page (no attendan
 if (BAD) {
   const y = await browser('bad-config', undefined, BAD); await y.p.goto(BAD + '#/login?role=student'); await wait(y, 1200)
   const t = await y.p.locator('main, body').first().innerText()
-  check('12. missing Firebase setting shows a clear message naming the setting (no button)', /isn’t set up on the server yet \(missing: FIREBASE_PROJECT_ID\)/.test(t) && !(await y.p.getByRole('button', { name: 'Continue with Google' }).count()), t.slice(0, 300))
+  check('12. missing Firebase setting shows a clear message naming the setting (no button)', /being set up/.test(t) && /missing server settings FIREBASE_PROJECT_ID/.test(t) && !(await y.p.getByRole('button', { name: 'Continue with Google' }).count()), t.slice(0, 300))
 }
 check('no CSP violations', csp.length === 0, csp.join(' | '))
 const errs = people.flatMap((x) => x.errs.map((e) => x.name + ': ' + e))

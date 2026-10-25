@@ -8,6 +8,11 @@ import { TRUSTED_DEMO } from '../lib/roles.js'
 // Demo sign-in (fictional sample users, browser-only data) exists only in the offline demo file. The deployed site
 // is built with __DEMO__ = false, so there is no way to enter it without a real Google sign-in.
 const DEMO_ENABLED = typeof __DEMO__ === 'undefined' ? true : __DEMO__ // eslint-disable-line no-undef
+// College site: while Google sign-in is NOT configured on the server, the demo accounts stay available so the site
+// is usable. They only ever see fictional sample data in this browser; the server never trusts them. The moment the
+// server reports Google sign-in as configured, demo sign-in switches off by itself.
+const DEMO_FALLBACK = typeof __DEMO_FALLBACK__ === 'undefined' ? false : __DEMO_FALLBACK__ // eslint-disable-line no-undef
+const demoAllowedFor = (s) => DEMO_ENABLED || (DEMO_FALLBACK && !!s && s.checked !== false && !(s.available && s.configured))
 import { notify, deadlineNotifications, markRead, markAllRead } from '../lib/notifications.js'
 
 const Ctx = createContext(null)
@@ -22,6 +27,8 @@ export function AppProvider({ children }) {
   const [now, setNow] = useState(() => new Date())
   const [session, setSession] = useState({ status: 'loading', mode: null, userId: null, email: null, phone: null, message: null })
   const [server, setServer] = useState({ checked: false, available: false, configured: false })
+  const serverRef = useRef({ checked: false })
+  useEffect(() => { serverRef.current = server }, [server])
   // Cloud sync state. `acct` holds the server version this browser last saw and the JSON last sent.
   const [sync, setSync] = useState({ status: 'off', at: null })
   const acct = useRef({ version: null, lastSent: null, timer: null, saving: false })
@@ -112,8 +119,8 @@ export function AppProvider({ children }) {
     ;(async () => {
       const s = await auth.serverAvailable()
       if (cancelled) return
-      setServer({ checked: true, ...s })
-      const demoUser = DEMO_ENABLED ? prefs.get('demoUser', null) : null
+      setServer({ checked: true, ...s }); serverRef.current = { checked: true, ...s }
+      const demoUser = demoAllowedFor({ ...s, checked: true }) ? prefs.get('demoUser', null) : null
       if (demoUser && dbRef.current.profiles[demoUser]) {
         setSession({ status: 'signedIn', mode: 'demo', userId: demoUser, email: null, phone: null, message: null })
         return
@@ -146,7 +153,7 @@ export function AppProvider({ children }) {
   const completeGoogleLogin = startSession
 
   const demoLogin = useCallback((userId) => {
-    if (!DEMO_ENABLED || !DEMO_USERS.includes(userId)) return
+    if (!demoAllowedFor(serverRef.current) || !DEMO_USERS.includes(userId)) return
     prefs.set('demoUser', userId)
     setSession({ status: 'signedIn', mode: 'demo', userId, email: null, phone: null, message: null })
   }, [])
@@ -299,7 +306,7 @@ export function AppProvider({ children }) {
   const value = {
     refreshAccount,
     db, setDb, now, toasts, pushToast, session, server, me, myData, sync,
-    completeGoogleLogin, demoLogin, demoEnabled: DEMO_ENABLED, signOut, resetDemo, runShared, updateMyData, updateProfile, markNotificationsRead, markAllNotificationsRead,
+    completeGoogleLogin, demoLogin, demoEnabled: demoAllowedFor(server), googleReady: server.available && server.configured, signOut, resetDemo, runShared, updateMyData, updateProfile, markNotificationsRead, markAllNotificationsRead,
     signedIn: session.status === 'signedIn',
   }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

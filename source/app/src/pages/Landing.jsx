@@ -59,7 +59,7 @@ export default function Landing() {
               </a>))}
           </div>}
           {!signedIn && demoEnabled && <p className="mt-3 text-[12.5px] text-white/80"><a href="#/login?role=organiser" className="font-semibold underline underline-offset-2">Council or club event desk (demo)</a></p>}
-          {!signedIn && <p className="mt-3 text-[12px] text-white/70">{demoEnabled ? 'Offline demo: sample accounts and data stay in this browser. The college site uses Google sign-in.' : 'Students, teachers and HODs sign in with their …@ves.ac.in Google account. Parents use the Google account their child added.'}</p>}
+          {!signedIn && <p className="mt-3 text-[12px] text-white/70">{demoEnabled ? 'Demo accounts use sample data kept in this browser. Real sign-in is with your college Google account.' : 'Students, teachers and HODs sign in with their …@ves.ac.in Google account. Parents use the Google account their child added.'}</p>}
         </div>
       </section>
 

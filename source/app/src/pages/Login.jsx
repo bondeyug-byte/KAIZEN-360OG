@@ -23,7 +23,7 @@ const GoogleMark = () => (
 )
 
 export default function Login({ next = '/' }) {
-  const { server, completeGoogleLogin, demoLogin, demoEnabled, session, db } = useApp()
+  const { server, completeGoogleLogin, demoLogin, demoEnabled, googleReady, session, db } = useApp()
   const fromHash = () => { const r = roleFromHash(); return !demoEnabled && (r === 'organiser' || r === 'admin') ? 'student' : r } // demo-only desks
   const [portal, setPortal] = useState(fromHash)
   useEffect(() => { const on = () => setPortal(fromHash()); window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on) }, []) // eslint-disable-line
@@ -73,10 +73,10 @@ export default function Login({ next = '/' }) {
         {portal !== 'organiser' && portal !== 'admin' && (
           <div className="rounded-xl border border-line bg-surface p-5">
             {!server.checked ? <Spinner label="Checking sign-in" /> : !ready ? (
-              <p role="status" className="rounded-lg bg-sand px-3 py-2 text-[13.5px]">
-                {!server.available ? 'Google sign-in needs the deployed app and its server functions. This copy has no server.'
-                  : `Google sign-in isn’t set up on the server yet${server.missing?.length ? ` (missing: ${server.missing.join(', ')})` : ''}. The college needs to finish the Firebase settings.`}
-              </p>
+              <div role="status" className="rounded-lg bg-sand px-3 py-2 text-[13.5px]">
+                <p>{!server.available ? 'Google sign-in needs the deployed app and its server functions. This copy has no server.' : 'Google sign-in with your college account is being set up.'}{demoEnabled && portal !== 'parent' && portal !== 'hod' ? ' Until then, use a demo account below (sample data only, kept in this browser).' : ''}</p>
+                {server.available && server.missing?.length > 0 && <p className="mt-1 text-[12px] text-muted">For the site admin: missing server settings {server.missing.join(', ')}. See docs/GOOGLE-SIGN-IN.md.</p>}
+              </div>
             ) : (
               <>
                 <button type="button" onClick={signIn} disabled={busy} aria-busy={busy}
@@ -94,8 +94,8 @@ export default function Login({ next = '/' }) {
         {portal === 'parent' && <p className="rounded-xl border border-line bg-surface p-4 text-[13.5px] text-muted"><b className="text-ink">How a parent gets access.</b> Your child adds your Google account email under College portal → My class, and their class teacher confirms it. If you change your Google account, your child removes the old one and adds the new one, and the teacher confirms it again.</p>}
         {demoEnabled && portal !== 'hod' && portal !== 'parent' && (
           <div className="rounded-xl border border-dashed border-[#C9B6DA] bg-[#F7F2FB] p-5">
-            <div className="mb-1 flex items-center gap-2"><b className="text-[15px]">Demo sign-in · {ROLE_LABEL[portal]}</b><Badge tone="demo">Offline demo only</Badge></div>
-            <p className="mb-3 text-sm text-muted">Fictional sample accounts with data stored only in this browser. This option exists only in the offline demo file, not on the college site.</p>
+            <div className="mb-1 flex items-center gap-2"><b className="text-[15px]">Demo sign-in · {ROLE_LABEL[portal]}</b><Badge tone="demo">Sample data</Badge></div>
+            <p className="mb-3 text-sm text-muted">Fictional sample accounts with data stored only in this browser. They never see real college records{googleReady ? '' : ', and they go away once Google sign-in is switched on'}.</p>
             <div className="grid gap-2 sm:grid-cols-2">
               {demoIdsFor(portal).map((id) => {
                 const p = db.profiles[id]

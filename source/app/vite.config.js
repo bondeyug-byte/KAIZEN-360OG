@@ -15,6 +15,6 @@ export default defineConfig(({ mode }) => ({
   },
   // __E2E__: browser tests only (`--mode e2e`). Lets the test drive "Continue with Google" with tokens signed by a
   // local test key; the server still verifies every token, and this code is compiled out of every other build.
-  define: { __SINGLE_FILE__: JSON.stringify(['single', 'deploy', 'e2e'].includes(mode)), __DEMO__: JSON.stringify(mode !== 'deploy' && mode !== 'e2e'), __E2E__: JSON.stringify(mode === 'e2e') },
+  define: { __SINGLE_FILE__: JSON.stringify(['single', 'deploy', 'e2e'].includes(mode)), __DEMO__: JSON.stringify(mode !== 'deploy' && mode !== 'e2e'), __E2E__: JSON.stringify(mode === 'e2e'), __DEMO_FALLBACK__: JSON.stringify(mode === 'deploy') },
   test: { environment: 'node', include: ['tests/**/*.test.js'] },
 }))
