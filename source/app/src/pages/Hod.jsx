@@ -55,23 +55,23 @@ function Teachers() {
   const { pushToast, session } = useApp()
   const cat = useCatalog()
   const s = useLoad(() => api('teachers').then((r) => r.teachers), [])
-  const blank = { phone: '', name: '', code: '', canPublishTimetable: true }
+  const blank = { email: '', name: '', code: '', canPublishTimetable: true }
   const [f, setF] = useState(blank)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
-  const [assign, setAssign] = useState({ phone: '', divisions: [], subject: '' })
+  const [assign, setAssign] = useState({ email: '', divisions: [], subject: '' })
   const save = async (e) => {
     e.preventDefault(); setErr(''); setBusy(true)
-    try { await api('teachers', { method: 'POST', body: { ...f, branch: session.hod.branches[0] } }); pushToast('Teacher saved. They can now sign in on the Teacher tab.'); setAssign({ ...assign, phone: f.phone }); setF(blank); s.reload() }
+    try { await api('teachers', { method: 'POST', body: { ...f, branch: session.hod.branches[0] } }); pushToast('Teacher saved. They can now sign in on the Teacher tab.'); setAssign({ ...assign, email: f.email }); setF(blank); s.reload() }
     catch (x) { setErr(x.message) } finally { setBusy(false) }
   }
-  const status = async (t, active) => { try { await api('teacher-status', { method: 'POST', body: { phone: t.phone, active } }); pushToast(active ? 'Teacher re-activated.' : 'Teacher deactivated. Their access ends on their next action.'); s.reload() } catch (x) { pushToast(x.message, 'bad') } }
+  const status = async (t, active) => { try { await api('teacher-status', { method: 'POST', body: { email: t.email, active } }); pushToast(active ? 'Teacher re-activated.' : 'Teacher deactivated. Their access ends on their next action.'); s.reload() } catch (x) { pushToast(x.message, 'bad') } }
   const addDivs = async () => {
     setBusy(true)
-    try { for (const division of assign.divisions) await api('teacher-division', { method: 'POST', body: { phone: assign.phone, division, subject: assign.subject } }); pushToast(`Assigned ${assign.divisions.join(', ')}.`); setAssign({ ...assign, divisions: [] }); s.reload() }
+    try { for (const division of assign.divisions) await api('teacher-division', { method: 'POST', body: { email: assign.email, division, subject: assign.subject } }); pushToast(`Assigned ${assign.divisions.join(', ')}.`); setAssign({ ...assign, divisions: [] }); s.reload() }
     catch (x) { pushToast(x.message, 'bad') } finally { setBusy(false) }
   }
-  const unassign = async (t, division) => { try { await api('teacher-division', { method: 'POST', body: { phone: t.phone, division, action: 'remove' } }); s.reload() } catch (x) { pushToast(x.message, 'bad') } }
+  const unassign = async (t, division) => { try { await api('teacher-division', { method: 'POST', body: { email: t.email, division, action: 'remove' } }); s.reload() } catch (x) { pushToast(x.message, 'bad') } }
   const branchCat = cat.data && { ...cat.data, divisions: cat.data.divisions.map((d) => ({ ...d, can: { ...d.can, assign: session.hod.branches.includes(d.branch_code) } })) }
   return (
     <div className="grid gap-4 xl:grid-cols-[1fr_420px]">
@@ -79,9 +79,9 @@ function Teachers() {
         <CardTitle eyebrow="Only active numbers here can open the Teacher portal">Teachers</CardTitle>
         <Loading s={s}>{!s.data?.length ? <p className="mt-2 text-[13.5px] text-muted">No teachers yet. Add one on the right.</p> : (
           <ul className="mt-2 text-[13.5px]">{s.data.map((t) => (
-            <li key={t.phone} className="border-t border-line py-2">
-              <div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{t.name}</span>{t.code && <Badge>{t.code}</Badge>}<span className="text-muted">{t.phone} · {t.branch_code}</span>{!t.active && <Badge tone="bad">Deactivated</Badge>}{t.can_publish_timetable && <Badge tone="info">Timetables</Badge>}
-                <span className="ml-auto flex gap-2"><Button size="sm" variant="ghost" onClick={() => setAssign({ ...assign, phone: t.phone })}>Assign divisions</Button>{t.active ? <ConfirmButton size="sm" variant="ghost" confirmText="Deactivate now" onConfirm={() => status(t, false)}>Deactivate</ConfirmButton> : <Button size="sm" variant="secondary" onClick={() => status(t, true)}>Re-activate</Button>}</span></div>
+            <li key={t.email} className="border-t border-line py-2">
+              <div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{t.name}</span>{t.code && <Badge>{t.code}</Badge>}<span className="text-muted">{t.email} · {t.branch_code}</span>{!t.active && <Badge tone="bad">Deactivated</Badge>}{t.can_publish_timetable && <Badge tone="info">Timetables</Badge>}
+                <span className="ml-auto flex gap-2"><Button size="sm" variant="ghost" onClick={() => setAssign({ ...assign, email: t.email })}>Assign divisions</Button>{t.active ? <ConfirmButton size="sm" variant="ghost" confirmText="Deactivate now" onConfirm={() => status(t, false)}>Deactivate</ConfirmButton> : <Button size="sm" variant="secondary" onClick={() => status(t, true)}>Re-activate</Button>}</span></div>
               <div className="mt-1 flex flex-wrap gap-1.5">{t.teaches.length ? t.teaches.map((x) => <span key={x.division + x.subject} className="inline-flex items-center gap-1 rounded-md bg-ground px-1.5 py-0.5 text-[12px]">{x.division}: {x.subject}<button type="button" aria-label={`Remove ${x.division}`} className="text-muted hover:text-bad" onClick={() => unassign(t, x.division)}>×</button></span>) : <span className="text-[12.5px] text-warn">No divisions assigned yet</span>}</div>
             </li>))}</ul>)}</Loading>
       </Card>
@@ -89,7 +89,7 @@ function Teachers() {
         <Card>
           <CardTitle eyebrow="Add or update">Teacher</CardTitle>
           <form onSubmit={save} className="mt-2 flex flex-col gap-3" noValidate>
-            <Field label="Mobile number" hint="The number they sign in with (+91 is added for you)">{(id) => <input id={id} className={inputCls} inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} />}</Field>
+            <Field label="College Google account" hint="The …@ves.ac.in email they sign in with">{(id) => <input id={id} className={inputCls} type="email" inputMode="email" autoComplete="off" placeholder="name@ves.ac.in" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />}</Field>
             <div className="grid grid-cols-[1fr_110px] gap-3">
               <Field label="Teacher name">{(id) => <input id={id} className={inputCls} value={f.name} maxLength={80} onChange={(e) => setF({ ...f, name: e.target.value })} />}</Field>
               <Field label="Initials" hint="As in the timetable">{(id) => <input id={id} className={inputCls} value={f.code} maxLength={12} onChange={(e) => setF({ ...f, code: e.target.value })} />}</Field>
@@ -102,10 +102,10 @@ function Teachers() {
         <Card>
           <CardTitle eyebrow="Your branch’s divisions only">Assign divisions</CardTitle>
           <div className="mt-2 flex flex-col gap-3">
-            <Field label="Teacher">{(id) => <select id={id} className={inputCls} value={assign.phone} onChange={(e) => setAssign({ ...assign, phone: e.target.value })}><option value="">Choose…</option>{(s.data || []).filter((t) => t.active).map((t) => <option key={t.phone} value={t.phone}>{t.name} {t.code ? `(${t.code})` : ''}</option>)}</select>}</Field>
+            <Field label="Teacher">{(id) => <select id={id} className={inputCls} value={assign.email} onChange={(e) => setAssign({ ...assign, email: e.target.value })}><option value="">Choose…</option>{(s.data || []).filter((t) => t.active).map((t) => <option key={t.email} value={t.email}>{t.name} {t.code ? `(${t.code})` : ''}</option>)}</select>}</Field>
             <Loading s={cat}>{branchCat && <DivisionPicker catalog={branchCat} value={assign.divisions} onChange={(divisions) => setAssign({ ...assign, divisions })} perm="assign" idPrefix="assign" />}</Loading>
             <Field label="Subject they teach there">{(id) => <input id={id} className={inputCls} value={assign.subject} maxLength={80} onChange={(e) => setAssign({ ...assign, subject: e.target.value })} />}</Field>
-            <div><Button disabled={busy || !assign.phone || !assign.divisions.length || !assign.subject.trim()} onClick={addDivs}>Assign</Button></div>
+            <div><Button disabled={busy || !assign.email || !assign.divisions.length || !assign.subject.trim()} onClick={addDivs}>Assign</Button></div>
           </div>
         </Card>
       </div>
@@ -133,7 +133,7 @@ function Instructions() {
           <Field label="Message">{(id) => <textarea id={id} rows={4} className={inputCls} maxLength={4000} value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} />}</Field>
           <Field label="Due date (optional)">{(id) => <input id={id} type="date" className={inputCls} value={f.dueDate} onChange={(e) => setF({ ...f, dueDate: e.target.value })} />}</Field>
           <Segmented label="Send to" value={f.to} onChange={(to) => setF({ ...f, to })} options={[{ value: 'all', label: 'All my teachers' }, { value: 'some', label: 'Selected teachers' }]} />
-          {f.to === 'some' && <Loading s={teachers}><div className="flex flex-col gap-1">{(teachers.data || []).map((t) => <label key={t.phone} className="flex items-center gap-2 text-[13.5px]"><input type="checkbox" checked={f.picked.includes(t.phone)} onChange={(e) => setF({ ...f, picked: e.target.checked ? [...f.picked, t.phone] : f.picked.filter((x) => x !== t.phone) })} />{t.name}</label>)}</div></Loading>}
+          {f.to === 'some' && <Loading s={teachers}><div className="flex flex-col gap-1">{(teachers.data || []).map((t) => <label key={t.email} className="flex items-center gap-2 text-[13.5px]"><input type="checkbox" checked={f.picked.includes(t.email)} onChange={(e) => setF({ ...f, picked: e.target.checked ? [...f.picked, t.email] : f.picked.filter((x) => x !== t.email) })} />{t.name}</label>)}</div></Loading>}
           <div><Button type="submit" disabled={busy || f.title.trim().length < 3 || (f.to === 'some' && !f.picked.length)}>{busy ? 'Sending…' : 'Send'}</Button></div>
         </form>
       </Card>

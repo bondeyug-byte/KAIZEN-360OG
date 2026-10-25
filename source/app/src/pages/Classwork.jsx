@@ -18,7 +18,7 @@ export default function Classwork({ query = {} }) {
   useEffect(() => { if (query.id) setOpenId(query.id) }, [query.id])
   // Phone accounts: classwork is what teachers post on the college server for the confirmed division.
   // (The browser sample assignments below are demo data and are never shown to a real account.)
-  if (session.mode === 'minimoth') return (
+  if (session.mode === 'google') return (
     <div>
       <PageHeader back title="Classwork" subtitle={session.enrollment ? `Announcements and materials your teachers posted for ${session.enrollment.division_code}.` : 'Join your class to see what your teachers post.'} />
       {session.enrollment ? <Feed key={session.enrollment.division_code} /> : <Empty icon="user" title="Not in a class yet" action={<a href="#/portal?tab=class" className="font-semibold text-maroon">Join your class</a>}>Your teachers post to a division, so classwork appears once your class is approved.</Empty>}

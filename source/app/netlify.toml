@@ -6,4 +6,4 @@
 [functions]
   node_bundler = "esbuild"
 
-# App uses hash routing. Functions declare their own paths: /api/auth/*, /api/assistant, /mcp.
+# App uses hash routing. Functions: /api/assistant, /mcp. Sign-in (Google via Firebase) runs only on the Vercel deployment (api/auth.js).

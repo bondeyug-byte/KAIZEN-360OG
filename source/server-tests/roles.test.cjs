@@ -1,13 +1,15 @@
 // Roles v2 (Phases A–F) server tests: real handlers + real Postgres (PGlite) + production-style signed cookies.
 // Synthetic numbers only. Run: npm test (in this folder).
-process.env.MINIMOTH_API_KEY = 'mm_test_k'; process.env.DATABASE_URL = 'postgres://u:p@h.example/db';
-process.env.HOD_PHONES = '9100000001=CMPN;9100000002=AIDS'; process.env.TEACHER_PHONES = '9100000021=Env Teacher|D2B:Maths';
+process.env.SESSION_SECRET = 'test-session-secret-0123456789-abcdefgh'; process.env.DATABASE_URL = 'postgres://u:p@h.example/db';
+process.env.HOD_EMAILS = 'u9100000001@ves.ac.in=CMPN;u9100000002@ves.ac.in=AIDS';
 const path = require('path'), fs = require('fs'), crypto = require('crypto'), assert = require('assert');
 const API = process.env.API_DIR || path.join(__dirname, '../../api');
 const { PGlite } = require('@electric-sql/pglite');
 const db = require(API + '/_db'); const app = require(API + '/app'); const MIG = require(API + '/_migrations');
-const sign = (p) => crypto.createHmac('sha256', 'mm_test_k').update('phone:' + p).digest('hex').slice(0, 32);
-const C = (n) => `mm_phone=${encodeURIComponent('+91' + n)}.${sign('+91' + n)}`;
+const { sessionCookie } = require(API + '/_session');
+// Synthetic identities: 91000002xx = parents (personal Gmail), everyone else = @ves.ac.in college accounts.
+const E = (n) => (String(n).includes('@') ? String(n) : /^91000002/.test(String(n)) ? `p${n}@gmail.com` : `u${n}@ves.ac.in`);
+const C = (n) => sessionCookie(E(n)).split(';')[0];
 const call = (who, method, route, body, query = {}) => new Promise((ok) => {
   const res = { h: {}, setHeader(k, v) { this.h[k] = v; }, status(c) { this.c = c; return this; }, json(b) { ok({ status: this.c, body: b }); }, end(buf) { ok({ status: this.c, raw: buf }); } };
   app({ method, query: { ...query, route }, url: '/api/app/' + route, headers: { cookie: C(who) }, body }, res);
@@ -39,26 +41,34 @@ const me = async (n) => (await call(n, 'GET', 'me')).body;
     assert.equal(c.branches.length, 6); assert.equal(c.years[0].label, 'FE'); assert.equal(c.divisions.length, 12);
     assert.ok(c.divisions.every((d) => d.branch_code && d.year_id));
   });
-  await t('HOD comes only from HOD_PHONES; outranks teacher', async () => {
+  await t('HOD comes only from HOD_EMAILS; outranks teacher', async () => {
     assert.equal((await me(HOD_CS)).role, 'hod'); assert.deepEqual((await me(HOD_CS)).hod.branches, ['CMPN']);
-    assert.equal((await call(HOD_CS, 'POST', 'teachers', { phone: HOD_AI, name: 'AI Head', branch: 'CMPN' })).body.code, 'IS_HOD');
+    assert.equal((await call(HOD_CS, 'POST', 'teachers', { email: E(HOD_AI), name: 'AI Head', branch: 'CMPN' })).body.code, 'IS_HOD');
   });
-  await t('TEACHER_PHONES seeded into the database once', async () => { const m = await me(T2); assert.equal(m.role, 'teacher'); assert.deepEqual(m.teacher.divisions, ['D2B']); });
+  // (Google sign-in) teachers come only from their HOD; there is no teacher list in the settings
+  await t('a college account is a student until the HOD adds it as a teacher', async () => {
+    assert.equal((await me(T2)).role, 'student')
+    await call(HOD_CS, 'POST', 'teachers', { email: E(T2), name: 'Env Teacher' }); await call(HOD_CS, 'POST', 'teacher-division', { email: E(T2), division: 'D2B', subject: 'Maths' })
+    const m = await me(T2); assert.equal(m.role, 'teacher'); assert.deepEqual(m.teacher.divisions, ['D2B'])
+  });
+  await t('HOD can only add college (@ves.ac.in) accounts as teachers', async () => {
+    for (const e of ['prof@gmail.com', 'prof@ves.ac.in.example.com', 'prof@x.ves.ac.in', 'not-an-email']) assert.equal((await call(HOD_CS, 'POST', 'teachers', { email: e, name: 'X Y' })).body.code, 'INVALID_EMAIL', e)
+  });
   // ---- HOD manages teachers ----
   await t('HOD adds and assigns teachers only within the branch', async () => {
-    assert.equal((await call(HOD_CS, 'POST', 'teachers', { phone: '+91 91000-00011', name: 'Prof. One', code: 'KD' })).status, 200);
-    assert.equal((await call(HOD_CS, 'POST', 'teacher-division', { phone: T1, division: 'D2A', subject: 'Maths' })).status, 200);
-    assert.equal((await call(HOD_CS, 'POST', 'teacher-division', { phone: T1, division: 'D1ADA', subject: 'Maths' })).status, 403);
-    assert.equal((await call(HOD_CS, 'POST', 'teachers', { phone: TAI, name: 'Prof AI', branch: 'AIDS' })).status, 403);
-    assert.equal((await call(HOD_AI, 'POST', 'teachers', { phone: TAI, name: 'Prof AI' })).status, 200);
-    assert.equal((await call(HOD_AI, 'POST', 'teacher-division', { phone: TAI, division: 'D1ADA', subject: 'Maths' })).status, 200);
+    assert.equal((await call(HOD_CS, 'POST', 'teachers', { email: '  U9100000011@VES.AC.IN ', name: 'Prof. One', code: 'KD' })).status, 200);
+    assert.equal((await call(HOD_CS, 'POST', 'teacher-division', { email: E(T1), division: 'D2A', subject: 'Maths' })).status, 200);
+    assert.equal((await call(HOD_CS, 'POST', 'teacher-division', { email: E(T1), division: 'D1ADA', subject: 'Maths' })).status, 403);
+    assert.equal((await call(HOD_CS, 'POST', 'teachers', { email: E(TAI), name: 'Prof AI', branch: 'AIDS' })).status, 403);
+    assert.equal((await call(HOD_AI, 'POST', 'teachers', { email: E(TAI), name: 'Prof AI' })).status, 200);
+    assert.equal((await call(HOD_AI, 'POST', 'teacher-division', { email: E(TAI), division: 'D1ADA', subject: 'Maths' })).status, 200);
     const list = (await call(HOD_CS, 'GET', 'teachers')).body.teachers.map((x) => x.name);
     assert.ok(list.includes('Prof. One') && !list.includes('Prof AI'));
   });
   await t('teachers, students and other-branch HODs cannot manage teachers', async () => {
-    assert.equal((await call(T1, 'POST', 'teachers', { phone: '9100000055', name: 'X Y' })).status, 403);
+    assert.equal((await call(T1, 'POST', 'teachers', { email: E('9100000055'), name: 'X Y' })).status, 403);
     assert.equal((await call(S1, 'GET', 'teachers')).status, 403);
-    assert.equal((await call(HOD_AI, 'POST', 'teacher-status', { phone: T1, active: false })).status, 403);
+    assert.equal((await call(HOD_AI, 'POST', 'teacher-status', { email: E(T1), active: false })).status, 403);
   });
   // ---- F1 join flow ----
   let r1;
@@ -72,7 +82,7 @@ const me = async (n) => (await call(n, 'GET', 'me')).body;
   });
   await t('teacher/HOD numbers cannot join as students', async () => assert.equal((await call(T1, 'POST', 'join-requests', { division: 'D2A' })).status, 403));
   await t('teacher sees requests only for assigned divisions', async () => {
-    const l = (await call(T1, 'GET', 'join-requests')).body; assert.equal(l.requests.length, 1); assert.equal(l.pendingTotal, 1); assert.match(l.requests[0].phone, /xxxx/);
+    const l = (await call(T1, 'GET', 'join-requests')).body; assert.equal(l.requests.length, 1); assert.equal(l.pendingTotal, 1); assert.match(l.requests[0].contact, /^u9•••@ves\.ac\.in$/); // masked for teachers
     assert.equal((await call(T2, 'GET', 'join-requests', null, { division: 'D2A' })).status, 403);
     assert.equal((await call(T2, 'POST', 'join-decision', { ids: [r1], decision: 'approve' })).body.results[0].ok, false);
     assert.equal((await call(HOD_AI, 'POST', 'join-decision', { ids: [r1], decision: 'approve' })).body.results[0].ok, false);
@@ -80,7 +90,7 @@ const me = async (n) => (await call(n, 'GET', 'me')).body;
   await t('two approvers at the same moment: exactly one wins, one enrollment', async () => {
     const [a, b] = await Promise.all([call(T1, 'POST', 'join-decision', { ids: [r1], decision: 'approve' }), call(HOD_CS, 'POST', 'join-decision', { ids: [r1], decision: 'approve' })]);
     assert.equal([a, b].filter((x) => x.body.results[0].ok).length, 1, JSON.stringify([a.body, b.body]));
-    assert.equal((await run(`select count(*)::int n from class_enrollments e join accounts a on a.id = e.student_id where a.phone = '+919100000101' and e.status = 'active'`))[0].n, 1);
+    assert.equal((await run(`select count(*)::int n from class_enrollments e join accounts a on a.id = e.student_id where a.phone = 'u9100000101@ves.ac.in' and e.status = 'active'`))[0].n, 1);
     assert.equal((await me(S1)).enrollment.division_code, 'D2A');
     const again = (await call(T1, 'POST', 'join-decision', { ids: [r1], decision: 'approve' })).body.results[0]; assert.match(again.error, /Already approved/);
   });
@@ -112,11 +122,11 @@ const me = async (n) => (await call(n, 'GET', 'me')).body;
     assert.equal((await call(S5, 'POST', 'cr-requests')).body.code, 'CR_FULL');
   });
   let s2req;
-  await t('CR approves a join request for their class; sees no phone numbers', async () => {
+  await t('CR approves a join request for their class; sees no contact details', async () => {
     s2req = (await call(S2, 'POST', 'join-requests', { division: 'D2A' })).body.joinRequest.id;
-    const l = (await call(S1, 'GET', 'join-requests')).body.requests; assert.ok(l.every((x) => x.phone === undefined && x.division_code === 'D2A'));
+    const l = (await call(S1, 'GET', 'join-requests')).body.requests; assert.ok(l.every((x) => x.contact === undefined && x.division_code === 'D2A'));
     assert.equal((await call(S1, 'POST', 'join-decision', { ids: [s2req], decision: 'approve' })).body.results[0].ok, true);
-    const ro = (await call(S1, 'GET', 'roster', null, { division: 'D2A' })).body.students; assert.ok(ro.length >= 3 && ro.every((x) => x.phone === undefined));
+    const ro = (await call(S1, 'GET', 'roster', null, { division: 'D2A' })).body.students; assert.ok(ro.length >= 3 && ro.every((x) => x.contact === undefined));
   });
   await t('CR cannot act on another division, post files, publish timetables or decide CR requests', async () => {
     const id = (await call(S3, 'POST', 'join-requests', { division: 'D1ADA' })).body.joinRequest.id;
@@ -177,11 +187,11 @@ const me = async (n) => (await call(n, 'GET', 'me')).body;
   });
   // ---- teacher removed while logged in ----
   await t('teacher deactivated mid-session: next request is refused; reactivation restores', async () => {
-    assert.equal((await call(HOD_CS, 'POST', 'teacher-status', { phone: T1, active: false })).status, 200);
+    assert.equal((await call(HOD_CS, 'POST', 'teacher-status', { email: E(T1), active: false })).status, 200);
     assert.equal((await me(T1)).role, 'student');
     assert.equal((await call(T1, 'POST', 'posts', { kind: 'announcement', title: 'After removal', divisions: ['D2A'] })).status, 403);
     assert.equal((await call(T1, 'GET', 'join-requests')).status, 403);
-    await call(HOD_CS, 'POST', 'teacher-status', { phone: T1, active: true }); assert.equal((await me(T1)).role, 'teacher');
+    await call(HOD_CS, 'POST', 'teacher-status', { email: E(T1), active: true }); assert.equal((await me(T1)).role, 'teacher');
   });
   // ---- F4 timetable ----
   const fe = process.env.FE_JSON || path.join(__dirname, 'fe_sheets.json');

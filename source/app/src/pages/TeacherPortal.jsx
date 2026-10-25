@@ -19,14 +19,14 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
 const STATUS_TONE = { [STATUS.OPEN]: 'ok', [STATUS.CLOSED]: 'warn', [STATUS.ARCHIVED]: 'neutral', open: 'ok', closed: 'warn', archived: 'neutral' }
 
 /**
- * Teacher portal. Access: role "teacher" (from the admin's allowlist + OTP) or admin. Every action goes through
+ * Teacher portal. Access: role "teacher" (from the server: the HOD adds teachers by college Google account) or admin. Every action goes through
  * src/lib/posts.js / challenges.js / attendance.js, which re-check the teacher's assigned divisions.
  * Browser-only storage in this build — see README "Multi-user delivery".
  */
 export default function TeacherPortal({ query = {} }) {
   const { me, session } = useApp()
   // Phone-verified teachers work on the college server; demo teachers keep the browser-only sample portal below.
-  if (session.mode === 'minimoth' && session.cloud && me?.role === 'teacher') return <CloudTeacher query={query} />
+  if (session.mode === 'google' && session.cloud && me?.role === 'teacher') return <CloudTeacher query={query} />
   return <DemoTeacherPortal query={query} />
 }
 

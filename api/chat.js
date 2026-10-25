@@ -1,7 +1,7 @@
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
-  const phone = require('./_session').getPhone(req);
+  const phone = require('./_session').getIdentity(req);
   if (!phone) return res.status(401).json({ offline: true, reason: 'sign in required' });
   try { const db = require('./_db'); await db.ensureSchema(); if (!(await db.allow('ai:' + phone, 150, 3600))) return res.status(429).json({ offline: true, reason: 'rate limited' }); } catch (e) { /* fail open: offline answers still work */ }
 

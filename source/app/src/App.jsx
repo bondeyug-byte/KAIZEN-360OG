@@ -58,9 +58,9 @@ export default function App() {
   // Freshly verified students with an empty profile go to onboarding first.
   useEffect(() => {
     if (!signedIn || !me || me.demo || !isStudent(me) || loc.path === '/profile' || loc.path === '/portal') return
-    // Phone sign-in: wait until the college account has loaded (session.cloud). Until then `me` is a bare local
+    // Google sign-in: wait until the college account has loaded (session.cloud). Until then `me` is a bare local
     // profile, and judging it by the demo rules sent every reload to onboarding (audit 2026-10 fix).
-    if (session.mode === 'minimoth' && !session.cloud) return
+    if (session.mode === 'google' && !session.cloud) return
     if (session.cloud) {
       // Phone accounts: a name first, then "Join your class" until a class is approved or requested.
       if (!me.name?.trim()) go('/profile?onboard=1')

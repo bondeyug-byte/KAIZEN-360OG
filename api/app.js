@@ -1,8 +1,8 @@
 // api/app.js — Campus360 college portal API (one serverless function, routed by ?route=).
 // Every request: verified cookie → load user from DB (api/_access.js) → can() (api/_policy.js) → validate →
 // act (multi-row changes in single SQL statements, so they succeed or fail together) → audit log → clear error.
-const { getPhone } = require('./_session');
-const { normalizePhone } = require('./_roles');
+const { getSession } = require('./_session');
+const { normalizeEmail, isInstitutional, maskIdentity, INSTITUTION_DOMAIN } = require('./_roles');
 const access = require('./_access');
 const { can, allowedDivisions } = require('./_policy');
 const tt = require('./_timetable');
@@ -27,7 +27,7 @@ const conflict = (code, message) => new HttpError(409, code, message);
 const notFound = (message) => new HttpError(404, 'NOT_FOUND', message);
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const txt = (v, max) => String(v === undefined || v === null ? '' : v).trim().slice(0, max);
-const mask = (p) => (p ? `${p.slice(0, 3)} ${p.slice(3, 5)}xxxx ${p.slice(-4)}` : '');
+const mask = maskIdentity; // pa•••@gmail.com (or a legacy +91 number, masked)
 const isUuid = (s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(s || ''));
 const page = (req) => Math.max(0, Math.min(1000, parseInt(req.query.page, 10) || 0));
 function body(req) {
@@ -96,7 +96,7 @@ async function catalog(who) {
 
 /* ============================== joining a class ============================== */
 async function joinRequest(who, req) {
-  need(who, 'join.request', {}, who.base === 'student' ? undefined : 'Teacher and HOD numbers cannot join a class as a student.');
+  need(who, 'join.request', {}, who.base === 'student' ? undefined : 'Teacher, HOD and parent accounts cannot join a class as a student.');
   await limit(`join:${who.account.id}`, 10, 3600);
   const b = body(req);
   const div = division(who, b.division);
@@ -135,7 +135,7 @@ async function listJoins(who, req) {
   const divs = req.query.division ? [division(who, req.query.division)] : scope;
   if (divs.some((d) => !scope.includes(d))) throw forbidden('That class is not yours to manage.');
   const history = req.query.status === 'decided';
-  const showPhone = who.base !== 'student'; // class reps never see phone numbers
+  const showPhone = who.base !== 'student'; // class reps never see contact details
   const rows = await db.q(
     `select j.id, j.student_id, j.division_code, j.status, j.kind, j.from_division, j.reason, j.note, j.created_at, j.decided_at, j.decided_as, a.name, a.phone,
             s.profile->>'roll' as roll, dec.name as decided_by_name
@@ -146,7 +146,7 @@ async function listJoins(who, req) {
       order by ${history ? 'j.decided_at desc' : 'j.created_at asc'} limit ${PAGE + 1} offset $2`, [divs, page(req) * PAGE, showPhone]);
   // class reps see new-student requests only; changes of division (with the student's reason) go to staff
   const [{ n }] = await db.q(`select count(*)::int as n from join_requests where status = 'pending' and division_code = any($1) and (kind = 'join' or $2::boolean)`, [scope, showPhone]);
-  return { requests: rows.slice(0, PAGE).map(({ phone, ...r }) => ({ ...r, phone: showPhone ? mask(phone) : undefined, self: r.student_id === who.account.id })), more: rows.length > PAGE, pendingTotal: n };
+  return { requests: rows.slice(0, PAGE).map(({ phone, ...r }) => ({ ...r, contact: showPhone ? mask(phone) : undefined, self: r.student_id === who.account.id })), more: rows.length > PAGE, pendingTotal: n };
 }
 /** Accept/reject up to 50 requests. The first valid decision wins: every update is conditional on the status. */
 async function decideJoins(who, req) {
@@ -242,7 +242,7 @@ async function roster(who, req) {
             exists (select 1 from cr_assignments c where c.student_id = a.id and c.division_code = $1 and c.active) as is_cr
        from class_enrollments e join accounts a on a.id = e.student_id left join account_state s on s.account_id = a.id
       where e.division_code = $1 and e.status = 'active' order by nullif(s.profile->>'roll', '') nulls last, a.name limit 300`, [div]);
-  return { division: div, students: rows.map(({ phone, ...r }) => ({ ...r, phone: showPhone ? mask(phone) : undefined })) };
+  return { division: div, students: rows.map(({ phone, ...r }) => ({ ...r, contact: showPhone ? mask(phone) : undefined })) };
 }
 
 /* ============================== class representatives ============================== */
@@ -331,7 +331,7 @@ async function assignCr(who, req) {
 }
 
 /* ============================== HOD: teachers, instructions, dashboard ============================== */
-const teacherCols = `w.phone, w.name, w.code, w.branch_code, w.active, w.can_publish_timetable, w.added_at,
+const teacherCols = `w.phone as email, w.name, w.code, w.branch_code, w.active, w.can_publish_timetable, w.added_at,
   coalesce((select json_agg(json_build_object('division', t.division_code, 'subject', t.subject) order by t.division_code) from teacher_divisions t where t.teacher_phone = w.phone), '[]') as teaches`;
 async function listTeachers(who) {
   if (who.base !== 'hod') throw forbidden('Only HODs manage teachers.');
@@ -342,12 +342,12 @@ async function listTeachers(who) {
 }
 async function saveTeacher(who, req) {
   const b = body(req);
-  const phone = normalizePhone(txt(b.phone, 20));
-  if (!phone) throw bad('INVALID_PHONE', 'Enter a 10-digit Indian mobile number.');
+  const phone = normalizeEmail(txt(b.email, 254));
+  if (!phone || !isInstitutional(phone)) throw bad('INVALID_EMAIL', `Enter the teacher’s college Google account (…@${INSTITUTION_DOMAIN}).`);
   const branch = txt(b.branch || who.hodBranches[0], 10).toUpperCase();
   need(who, 'teacher.manage', { branch }, 'You can only add teachers to your own branch.');
   const [isHod] = await db.q('select 1 from hod_assignments where phone = $1 and active', [phone]);
-  if (isHod) throw conflict('IS_HOD', 'That number belongs to an HOD. HOD outranks teacher, so it cannot be added as a teacher.');
+  if (isHod) throw conflict('IS_HOD', 'That account belongs to an HOD. HOD outranks teacher, so it cannot be added as a teacher.');
   const [existing] = await db.q('select branch_code from teacher_whitelist where phone = $1', [phone]);
   if (existing && existing.branch_code && existing.branch_code !== branch && !who.hodBranches.includes(existing.branch_code)) {
     throw conflict('OTHER_BRANCH', `This teacher belongs to ${existing.branch_code}. You can still assign them to your divisions below.`);
@@ -359,13 +359,13 @@ async function saveTeacher(who, req) {
      on conflict (phone) do update set name = excluded.name, code = excluded.code, branch_code = excluded.branch_code, can_publish_timetable = excluded.can_publish_timetable, active = true`,
     [phone, name, code, branch, b.canPublishTimetable !== false, who.account.id]);
   await db.audit(who.account.id, existing ? 'teacher.update' : 'teacher.add', mask(phone), { name, code }, branch);
-  return { saved: mask(phone), phone };
+  return { saved: mask(phone), email: phone };
 }
 async function teacherStatus(who, req) {
   const b = body(req);
-  const phone = normalizePhone(txt(b.phone, 20));
+  const phone = normalizeEmail(txt(b.email, 254));
   const [t] = phone ? await db.q('select branch_code from teacher_whitelist where phone = $1', [phone]) : [];
-  if (!t) throw notFound('That number is not on the teacher list.');
+  if (!t) throw notFound('That account is not on the teacher list.');
   need(who, 'teacher.manage', { branch: t.branch_code }, 'You can only manage teachers of your own branch.');
   const active = b.active === true;
   await db.q('update teacher_whitelist set active = $2 where phone = $1', [phone, active]);
@@ -374,7 +374,7 @@ async function teacherStatus(who, req) {
 }
 async function teacherDivision(who, req) {
   const b = body(req);
-  const phone = normalizePhone(txt(b.phone, 20));
+  const phone = normalizeEmail(txt(b.email, 254));
   const div = division(who, b.division);
   need(who, 'teacher.assign', { division: div }, 'You can only assign teachers to your own branch’s divisions.');
   const [t] = phone ? await db.q('select active from teacher_whitelist where phone = $1', [phone]) : [];
@@ -397,7 +397,7 @@ async function sendInstruction(who, req) {
   const due = b.dueDate ? txt(b.dueDate, 10) : null;
   if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) throw bad('INVALID_DATE', 'Due date must be a date.');
   const pool = (await db.q(`select w.phone from teacher_whitelist w where w.active and (w.branch_code = $1 or exists (select 1 from teacher_divisions t join divisions d on d.code = t.division_code where t.teacher_phone = w.phone and d.branch_code = $1))`, [branch])).map((r) => r.phone);
-  const pick = b.teachers === 'all' ? pool : (Array.isArray(b.teachers) ? b.teachers : []).map((p) => normalizePhone(txt(p, 20)));
+  const pick = b.teachers === 'all' ? pool : (Array.isArray(b.teachers) ? b.teachers : []).map((p) => normalizeEmail(txt(p, 254)));
   const outside = pick.filter((p) => !pool.includes(p));
   if (outside.length) throw forbidden('Some selected teachers are not active teachers of your branch.');
   if (!pick.length) throw bad('NO_RECIPIENTS', 'Choose at least one teacher.');
@@ -681,7 +681,7 @@ const ROUTES = {
   'POST timetable-preview': ttPreview, 'POST timetable-publish': ttPublish, 'POST timetable-rollback': ttRollback,
   'GET timetable-versions': ttVersions, 'GET timetable': timetable,
   // parent portal, attendance, marks, alerts, events (api/_records.js)
-  ...records({ db, can, need, bad, forbidden, notFound, conflict, body, txt, isUuid, division, limit, branchOf, displayName, allowedDivisions, normalizePhone, mask }),
+  ...records({ db, can, need, bad, forbidden, notFound, conflict, body, txt, isUuid, division, limit, branchOf, displayName, allowedDivisions, normalizeEmail, isInstitutional, mask }),
 };
 
 module.exports = async (req, res) => {
@@ -690,11 +690,13 @@ module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   const handler = ROUTES[`${req.method} ${route}`];
   try {
-    const phone = getPhone(req);
-    if (!phone) throw new HttpError(401, 'NO_SESSION', 'Sign in required.');
+    const session = getSession(req);
+    if (!session) throw new HttpError(401, 'NO_SESSION', 'Sign in required.');
     if (!handler) throw notFound('Unknown route.');
     await db.ensureSchema();
-    const who = await access.resolve(phone);
+    const who = await access.resolve(session.email, session.iat);
+    // Signed in with Google but no access: wrong domain and not a confirmed parent, or signed out elsewhere.
+    if (who.base === 'none') throw new HttpError(who.ended ? 401 : 403, who.ended ? 'SESSION_ENDED' : 'NO_ACCESS', who.ended ? 'You signed out. Sign in again.' : `This Google account has no access. Students and staff use their …@${INSTITUTION_DOMAIN} account; parents need a confirmed link to a student.`);
     const out = await handler(who, req, res);
     if (out === SENT) return undefined;
     return res.status(200).json({ ok: true, ...out });

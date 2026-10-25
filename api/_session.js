@@ -1,50 +1,48 @@
+// The signed-in identity: a verified Google email (see api/auth.js), kept in an HttpOnly, Secure, SameSite=Strict
+// cookie signed with SESSION_SECRET. The browser can't read or change it. Roles are NOT in the cookie: every API
+// request looks them up again (api/_access.js), and the domain rule is re-checked there too.
 const crypto = require('crypto');
-const { neon } = require('@neondatabase/serverless');
-const sql = neon(process.env.DATABASE_URL);
+const { normalizeEmail } = require('./_roles');
+
+const COOKIE = 'c360_session';
+const MAX_AGE = 60 * 60 * 24 * 7; // 7 days; a sign-out ends it everywhere (accounts.sessions_valid_after)
+const LEGACY = ['mm_phone', 'mm_refresh']; // earlier phone sign-in: cleared, never accepted
 
 function readCookie(req, name) {
-  for (const part of (req.headers.cookie || '').split(';')) {
+  for (const part of String((req.headers && req.headers.cookie) || '').split(';')) {
     const [k, ...rest] = part.trim().split('=');
     if (k === name) return rest.join('=');
   }
   return null;
 }
+const secret = () => process.env.SESSION_SECRET || '';
+const mac = (data) => crypto.createHmac('sha256', secret()).update('c360:' + data).digest('base64url');
 
-// Verified phone number from the signed login cookie, or null.
-function getPhone(req) {
-  const key = process.env.MINIMOTH_API_KEY;
-  if (!key) return null;
-  const raw = readCookie(req, 'mm_phone');
+/** Set-Cookie value for a new session. */
+function sessionCookie(email, nowSec = Math.floor(Date.now() / 1000)) {
+  const data = Buffer.from(JSON.stringify({ e: email, iat: nowSec, exp: nowSec + MAX_AGE })).toString('base64url');
+  return `${COOKIE}=${data}.${mac(data)}; HttpOnly; Secure; SameSite=Strict; Path=/api; Max-Age=${MAX_AGE}`;
+}
+function clearCookies() {
+  return [`${COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/api; Max-Age=0`,
+    ...LEGACY.flatMap((n) => [`${n}=; HttpOnly; Secure; SameSite=Strict; Path=/api; Max-Age=0`, `${n}=; HttpOnly; Secure; SameSite=Strict; Path=/api/auth; Max-Age=0`])];
+}
+
+/** { email, iat } from a valid, unexpired session cookie, or null. */
+function getSession(req, nowSec = Math.floor(Date.now() / 1000)) {
+  if (secret().length < 32) return null; // not configured: nobody is signed in
+  const raw = readCookie(req, COOKIE);
   if (!raw) return null;
   const i = raw.lastIndexOf('.');
-  if (i < 0) return null;
-  const phone = decodeURIComponent(raw.slice(0, i));
-  const expected = crypto.createHmac('sha256', key).update('phone:' + phone).digest('hex').slice(0, 32);
-  const given = Buffer.from(raw.slice(i + 1));
-  const want = Buffer.from(expected);
+  if (i < 1) return null;
+  const data = raw.slice(0, i), given = Buffer.from(raw.slice(i + 1)), want = Buffer.from(mac(data));
   if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) return null;
-  return phone;
+  let p; try { p = JSON.parse(Buffer.from(data, 'base64url').toString('utf8')); } catch (e) { return null; }
+  const email = normalizeEmail(p && p.e);
+  if (!email || typeof p.exp !== 'number' || p.exp <= nowSec || typeof p.iat !== 'number') return null;
+  return { email, iat: p.iat };
 }
+/** The signed-in identity (email) or null. */
+const getIdentity = (req) => { const s = getSession(req); return s ? s.email : null; };
 
-// Signed-in user with roles from the database. Unknown numbers become students.
-async function getUser(req) {
-  const phone = getPhone(req);
-  if (!phone) return null;
-  const rows = await sql`insert into users (phone) values (${phone})
-    on conflict (phone) do update set phone = excluded.phone
-    returning phone, name, roles`;
-  return rows[0];
-}
-
-// Use at the top of a route. Returns the user, or sends 401/403 and returns null.
-async function requireRole(req, res, ...allowed) {
-  const user = await getUser(req);
-  if (!user) { res.status(401).json({ error: 'Sign in required' }); return null; }
-  if (!allowed.some((r) => user.roles.includes(r))) {
-    res.status(403).json({ error: 'Not allowed for your role' });
-    return null;
-  }
-  return user;
-}
-
-module.exports = { getPhone, getUser, requireRole };
+module.exports = { getSession, getIdentity, getPhone: getIdentity, sessionCookie, clearCookies, readCookie, COOKIE, MAX_AGE };

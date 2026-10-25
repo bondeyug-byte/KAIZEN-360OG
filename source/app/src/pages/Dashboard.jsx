@@ -52,7 +52,7 @@ const Link = ({ href, children }) => <a href={href} className="text-[13px] font-
 
 export default function Dashboard({ query = {} }) {
   const { db, me, myData, now, session, updateMyData, pushToast } = useApp()
-  const live = session.mode === 'minimoth' // phone account: sample records are never presented as real
+  const live = session.mode === 'google' // phone account: sample records are never presented as real
   const my = useMyTimetable()
   const att = useStudentAttendance()
   const [hidden, setHiddenState] = useState(() => prefs.get('overviewHidden', []))

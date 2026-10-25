@@ -1,11 +1,14 @@
 # Campus360 college portal — architecture and handover
 
+> **Sign-in is now Google (Firebase Authentication)**: `…@ves.ac.in` accounts for students, teachers and HODs; any Google account for confirmed parents. Setup, rules and the settings to change are in [GOOGLE-SIGN-IN.md](GOOGLE-SIGN-IN.md). Where this page still mentions phone numbers, `HOD_PHONES`, `TEACHER_PHONES` or MiniMoth, that describes the earlier phone sign-in: read "Google account email" and `HOD_EMAILS` instead.
+
+
 
 ## 0. Roles v2 (October 2026) — read this first
 | Role | How someone gets it | Where they work |
 |---|---|---|
-| **HOD** | Only through the server setting `HOD_PHONES` (`98xxxxxxxx=CMPN;97xxxxxxxx=AIDS` — one HOD per branch). Copied into `hod_assignments` on every server start; numbers removed from the setting lose HOD access. | Separate **HOD portal** (`/hod`, "HOD" tab on the login page) |
-| **Teacher** | The HOD adds the number in HOD portal → Teachers and assigns divisions. (`TEACHER_PHONES` is copied in once, then remove it.) | Teacher portal |
+| **HOD** | Only through the server setting `HOD_EMAILS` (`hod.cmpn@ves.ac.in=CMPN;hod.aids@ves.ac.in=AIDS`, one HOD per branch). Copied into `hod_assignments` on every server start; accounts removed from the setting lose HOD access. | Separate **HOD portal** (`/hod`, "HOD" tab on the login page) |
+| **Teacher** | The HOD adds the teacher's `…@ves.ac.in` Google account in HOD portal → Teachers and assigns divisions. | Teacher portal |
 | **Class rep (CR)** | A student asks ("Request CR role") and the division's teacher or the HOD approves, or the HOD assigns directly. Max 2 per division. | Student login → College portal → **CR Tools** |
 | **Student** | Anyone else. Joins one division by request; a teacher of that division, its CR or the branch HOD approves (first decision wins). Max 65 per division. | College portal |
 
@@ -54,7 +57,7 @@ photographed on the ground floor, so its rooms keep generic G-numbers. The lift 
 the lift notice (R & M Department, Admin Office); personal mobile numbers are deliberately left out.
 
 ## 1. In one minute (for the HOD)
-Students, teachers and the HOD sign in with their phone number and a one-time code (MiniMoth).
+Students, teachers and the HOD sign in with their `…@ves.ac.in` Google account; parents with any Google account the college confirmed (see GOOGLE-SIGN-IN.md).
 The server identifies them from a signed cookie and looks up their role in the college database (Neon Postgres):
 
 - **HOD** (`ADMIN_PHONES` setting): manages the teacher list, class representatives, join requests, timetables; sees the audit log.

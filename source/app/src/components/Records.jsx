@@ -129,24 +129,24 @@ export function MyRecord() {
 export function MyParents() {
   const { pushToast } = useApp()
   const s = useLoad(() => api('parent-links'), [])
-  const [phone, setPhone] = useState(''), [relation, setRelation] = useState('Mother'), [busy, setBusy] = useState(false)
-  const add = async (e) => { e.preventDefault(); setBusy(true); try { await api('parent-links', { method: 'POST', body: { phone, relation } }); setPhone(''); pushToast('Added. Your class teacher will confirm it.'); s.reload() } catch (x) { pushToast(x.message, 'bad') } finally { setBusy(false) } }
-  const remove = async (id) => { try { await api('parent-links', { method: 'DELETE', query: { id } }); pushToast('Removed. That number can no longer see your record.'); s.reload() } catch (x) { pushToast(x.message, 'bad') } }
+  const [email, setEmail] = useState(''), [relation, setRelation] = useState('Mother'), [busy, setBusy] = useState(false)
+  const add = async (e) => { e.preventDefault(); setBusy(true); try { await api('parent-links', { method: 'POST', body: { email: email.trim(), relation } }); setEmail(''); pushToast('Added. Your class teacher will confirm it.'); s.reload() } catch (x) { pushToast(x.message, 'bad') } finally { setBusy(false) } }
+  const remove = async (id) => { try { await api('parent-links', { method: 'DELETE', query: { id } }); pushToast('Removed. That account can no longer see your record.'); s.reload() } catch (x) { pushToast(x.message, 'bad') } }
   const TONE = { approved: 'ok', pending: 'warn', rejected: 'bad' }
   return (
     <Card className="max-w-xl">
       <CardTitle eyebrow="Parents & guardians">Who can see your record</CardTitle>
-      <p className="mt-1 text-[13px] text-muted">A parent signs in on the Parent tab with their own phone. They only see your attendance, published marks, published alerts, class notices and events. Your class teacher or HOD confirms each number first.</p>
-      <Loading s={s}>{s.data && (s.data.links.length ? <ul className="mt-3 flex flex-col gap-2">{s.data.links.map((l) => <li key={l.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-line px-3 py-2 text-[13.5px]"><b>{l.relation}</b><span className="font-mono">{l.phone}</span><Badge tone={TONE[l.status]}>{l.status === 'approved' ? 'Confirmed' : l.status === 'pending' ? 'Waiting for teacher' : 'Not confirmed'}</Badge>{l.status !== 'rejected' && <ConfirmButton size="sm" variant="ghost" className="ml-auto" confirmText="Remove access" onConfirm={() => remove(l.id)}>Remove</ConfirmButton>}</li>)}</ul> : <p className="mt-3 text-[13.5px] text-muted">No parents added yet.</p>)}</Loading>
+      <p className="mt-1 text-[13px] text-muted">A parent signs in on the Parent tab with their own Google account (Gmail or any other). They only see your attendance, published marks, published alerts, class notices and events. Your class teacher or HOD confirms each account first. If a parent changes their Google account, remove the old one and add the new one.</p>
+      <Loading s={s}>{s.data && (s.data.links.length ? <ul className="mt-3 flex flex-col gap-2">{s.data.links.map((l) => <li key={l.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-line px-3 py-2 text-[13.5px]"><b>{l.relation}</b><span className="font-mono">{l.contact}</span><Badge tone={TONE[l.status]}>{l.status === 'approved' ? 'Confirmed' : l.status === 'pending' ? 'Waiting for teacher' : 'Not confirmed'}</Badge>{l.status !== 'rejected' && <ConfirmButton size="sm" variant="ghost" className="ml-auto" confirmText="Remove access" onConfirm={() => remove(l.id)}>Remove</ConfirmButton>}</li>)}</ul> : <p className="mt-3 text-[13.5px] text-muted">No parents added yet.</p>)}</Loading>
       <form onSubmit={add} className="mt-3 grid gap-2 sm:grid-cols-[1fr_130px_auto]">
-        <Field label="Parent's mobile number">{(id) => <input id={id} className={inputCls} inputMode="tel" autoComplete="off" placeholder="10-digit number" value={phone} onChange={(e) => setPhone(e.target.value)} />}</Field>
+        <Field label="Parent's Google account email">{(id) => <input id={id} className={inputCls} type="email" inputMode="email" autoComplete="off" placeholder="name@gmail.com" value={email} onChange={(e) => setEmail(e.target.value)} />}</Field>
         <Field label="Relation">{(id) => <select id={id} className={inputCls} value={relation} onChange={(e) => setRelation(e.target.value)}>{['Mother', 'Father', 'Guardian', 'Parent'].map((r) => <option key={r}>{r}</option>)}</select>}</Field>
-        <div className="flex items-end"><Button type="submit" disabled={busy || phone.replace(/\D/g, '').length < 10}>{busy ? 'Adding…' : 'Add'}</Button></div>
+        <div className="flex items-end"><Button type="submit" disabled={busy || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())}>{busy ? 'Adding…' : 'Add'}</Button></div>
       </form>
     </Card>
   )
 }
-/** Teacher / HOD: confirm parent numbers for students in their divisions. */
+/** Teacher / HOD: confirm parent accounts for students in their divisions (emails are shown masked). */
 export function ParentLinkRequests() {
   const { pushToast } = useApp()
   const s = useLoad(() => api('parent-links'), [])
@@ -154,10 +154,10 @@ export function ParentLinkRequests() {
   return (
     <Card>
       <CardTitle eyebrow="Parent portal">Confirm parents and guardians</CardTitle>
-      <p className="mt-1 text-[13px] text-muted">Students add a parent's number. Confirm only when you are satisfied the number belongs to that student's parent or guardian (e.g. it matches college records). Confirmed parents can read — never change — that student's record.</p>
+      <p className="mt-1 text-[13px] text-muted">Students add a parent's Google account email (shown masked). Confirm only when you are satisfied it belongs to that student's parent or guardian, for example by checking with the parent or the college records. Confirmed parents can read, never change, that student's record.</p>
       <Loading s={s}>{s.data && (s.data.links.length === 0 ? <p className="mt-3 text-[13.5px] text-muted">Nothing to confirm.</p> : (
         <ul className="mt-3 flex flex-col gap-2">{s.data.links.map((l) => <li key={l.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-line px-3 py-2 text-[13.5px]">
-          <b>{l.student_name || 'Student'}</b><span className="text-muted">{l.division_code}{l.roll ? ` · Roll ${l.roll}` : ''}</span><span>→ {l.relation} <span className="font-mono">{l.phone}</span></span>
+          <b>{l.student_name || 'Student'}</b><span className="text-muted">{l.division_code}{l.roll ? ` · Roll ${l.roll}` : ''}</span><span>→ {l.relation} <span className="font-mono">{l.contact}</span></span>
           {l.status === 'pending' ? <span className="ml-auto flex gap-1.5"><Button size="sm" onClick={() => decide(l.id, 'approve')}>Confirm</Button><Button size="sm" variant="secondary" onClick={() => decide(l.id, 'reject')}>Reject</Button></span> : <Badge className="ml-auto" tone={l.status === 'approved' ? 'ok' : 'bad'}>{l.status}</Badge>}
         </li>)}</ul>))}</Loading>
     </Card>

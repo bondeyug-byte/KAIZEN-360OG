@@ -29,7 +29,7 @@ export function refreshMyRecord() { if (state.key) return load(state.key, true) 
 /** { cloud, status: 'demo'|'loading'|'ok'|'error', data, message, at } */
 export function useMyRecord() {
   const { session, me } = useApp()
-  const cloud = session.mode === 'minimoth' && !!session.cloud && isStudent(me) // phone students have no role field
+  const cloud = session.mode === 'google' && !!session.cloud && isStudent(me) // phone students have no role field
   const key = cloud ? `${session.userId}:${session.enrollment?.division_code || ''}` : null
   const snap = useSyncExternalStore((f) => { subs.add(f); return () => subs.delete(f) }, () => state)
   useEffect(() => {

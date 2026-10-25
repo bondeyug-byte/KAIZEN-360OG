@@ -5,7 +5,7 @@ import { PUBLIC_TOOLS, runPublicTool, resolvePlace } from './publicTools.js'
 import { timetableForClass } from '../data/seed.js'
 import { currentTimetable } from '../lib/timetable.js'
 // Phone accounts: the server timetable (same source as the Overview and College portal); demo: the sample.
-const ttOf = (me) => { const c = currentTimetable(); return me?.authMethod === 'minimoth' ? (c.entries || []) : timetableForClass(me?.classId) }
+const ttOf = (me) => { const c = currentTimetable(); return ['google', 'minimoth'].includes(me?.authMethod) ? (c.entries || []) : timetableForClass(me?.classId) }
 import { place, floorName } from '../navigator/building.js'
 import { checkTarget, marksTable, RESULT } from '../lib/academic.js'
 import { leaderboard, eligible, hasCompleted, completeChallenge } from '../lib/challenges.js'

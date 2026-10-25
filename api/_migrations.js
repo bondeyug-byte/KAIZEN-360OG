@@ -321,5 +321,19 @@ module.exports = [
       `alter table join_requests add column if not exists reason text not null default ''`,
     ],
   },
+  {
+    id: 6,
+    name: 'Google sign-in: identity columns accept verified emails; sign-out ends sessions (additive, no data changed)',
+    up: [
+      // The phone columns become the sign-in identity: existing +91 numbers stay valid, lower-case emails are added.
+      // Constraints are only widened; no row is rewritten or removed.
+      ...[['accounts', 'phone'], ['teacher_whitelist', 'phone'], ['hod_assignments', 'phone'], ['parent_links', 'parent_phone']].flatMap(([t, c]) => [
+        `alter table ${t} drop constraint if exists ${t}_${c}_check`,
+        `alter table ${t} drop constraint if exists ${t}_identity_check`,
+        `alter table ${t} add constraint ${t}_identity_check check (${c} ~ '^\\+91[6-9][0-9]{9}$' or ${c} ~ '^[^@[:space:]A-Z]+@[a-z0-9-]+(\\.[a-z0-9-]+)+$')`,
+      ]),
+      `alter table accounts add column if not exists sessions_valid_after timestamptz`,
+    ],
+  },
 ];
 module.exports.FE_DIVISIONS = FE_DIVISIONS;

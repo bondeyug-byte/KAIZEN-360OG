@@ -15,7 +15,7 @@ export default function Portal({ query = {} }) {
   const [tab, setTab] = useState(query.tab || null)
   useEffect(() => { if (query.tab) setTab(query.tab) }, [query.tab])
   const active = tabs.find((t) => t[0] === tab) ? tab : session.enrollment ? 'feed' : 'class'
-  if (session.mode !== 'minimoth') return <div className="py-10"><Empty icon="lock" title="Sign in with your phone">The college portal keeps your class, notices and timetable on the college server so they appear on every device. Demo accounts can’t use it.</Empty></div>
+  if (session.mode !== 'google') return <div className="py-10"><Empty icon="lock" title="Sign in with your phone">The college portal keeps your class, notices and timetable on the college server so they appear on every device. Demo accounts can’t use it.</Empty></div>
   if (me?.role === 'teacher') return <div className="py-10"><Empty icon="shield" title="Teachers use the Teacher portal">Join requests, posting, instructions and the Timetable Schedule are in the <a className="font-semibold text-maroon underline" href="#/teacher">Teacher portal</a>.</Empty></div>
   if (me?.role === 'parent') return <div className="py-10"><Empty icon="user" title="Open the Parent portal">Your child's record is in the <a className="font-semibold text-maroon underline" href="#/parent">Parent portal</a>.</Empty></div>
   if (me?.role === 'hod') return <div className="py-10"><Empty icon="shield" title="Open the HOD portal">Your tools are in the <a className="font-semibold text-maroon underline" href="#/hod">HOD portal</a>.</Empty></div>

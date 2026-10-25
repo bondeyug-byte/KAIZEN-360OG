@@ -3,7 +3,6 @@ import { useApp, profileCompletion } from '../store/AppContext.jsx'
 import { PageHeader, Card, CardTitle, Button, Badge, Field, inputCls, cx, ConfirmButton, AnimatedNumber, Spinner } from '../components/ui.jsx'
 import Icon from '../components/Icon.jsx'
 import { CLASSES, CLASS_LABEL, INTEREST_OPTIONS } from '../data/config.js'
-import { maskPhone } from '../lib/auth.js'
 import { YEARS, BRANCHES, divisionsFor, validateAcademic, divisionInfo, hasAcademicIdentity } from '../data/academics.js'
 import { isStudent } from '../lib/posts.js'
 import { AttendanceSummary } from './Attendance.jsx'
@@ -14,7 +13,7 @@ import { verificationOf } from '../lib/rides.js'
 export default function Profile({ query }) {
   const { me, db, session, updateProfile, resetDemo, signOut, pushToast, sync } = useApp()
   const locked = hasAcademicIdentity(me) && (me.academicLocked !== false)
-  const real = session.mode === 'minimoth' // real accounts choose from the college's real divisions
+  const real = session.mode === 'google' // real accounts choose from the college's real divisions
   const [acErr, setAcErr] = useState({})
   const initForm = (me) => ({ name: me.name || '', classId: me.classId || '', branch: me.branch || '', email: me.email || '', collegeId: me.collegeId || '', roll: me.roll || '', year: me.year || '', branchId: me.branchId || '', division: me.division || '', interests: me.interests || [], subjects: me.subjects || [] })
   const [f, setF] = useState(() => initForm(me))
@@ -41,15 +40,15 @@ export default function Profile({ query }) {
       ac = { year: f.year, branchId: f.branchId, division: f.division, roll: f.roll.trim(), academicLocked: true }
     }
     const { year, branchId, division, roll, ...rest } = f
-    updateProfile({ ...rest, ...ac, name: f.name.trim(), branch: f.branch.trim() || (BRANCHES.find((b) => b.id === f.branchId)?.label || ''), email: f.email.trim(), collegeId: (f.collegeId || '').trim().slice(0, 30) })
+    updateProfile({ ...rest, ...ac, name: f.name.trim(), branch: f.branch.trim() || (BRANCHES.find((b) => b.id === f.branchId)?.label || ''), email: me.authMethod === 'google' ? me.email : f.email.trim(), collegeId: (f.collegeId || '').trim().slice(0, 30) })
     pushToast('Profile saved. Suggestions are updated.')
-    // New phone-verified students go straight on to "Join your class".
+    // New Google-verified students go straight on to "Join your class".
     if (query?.onboard) window.location.hash = real && !session.enrollment ? '/portal?tab=class' : '/'
   }
   return (
     <div>
       <PageHeader back={!query?.onboard} title={query?.onboard ? 'Welcome to Campus360' : 'Your profile'} subtitle={query?.onboard ? 'Tell us a little about you so the dashboard can show your timetable and suggestions.' : 'Your interests and subjects shape event suggestions and peer-learning matches.'} />
-      {session.mode === 'minimoth' && <SyncLine sync={sync} />}
+      {session.mode === 'google' && <SyncLine sync={sync} />}
       <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
         <Card>
           <form onSubmit={save} className="flex flex-col gap-5" noValidate>
@@ -68,8 +67,8 @@ export default function Profile({ query }) {
                 {locked && <p className="text-[12.5px] text-muted sm:col-span-2">{divisionInfo(me.division)?.label} · roll {me.roll}. Your division and roll number decide which classwork and attendance you see, so only an admin can change them (Admin → Students in this demo).</p>}
                 <Field label="Timetable group">{(id) => <select id={id} className={inputCls} value={f.classId} onChange={(e) => setF({ ...f, classId: e.target.value })}><option value="">Choose…</option>{[...CLASSES, 'SE-A'].map((c) => <option key={c} value={c}>{CLASS_LABEL[c]}</option>)}</select>}</Field>
               </>}
-              <Field label="College ID number (optional)" hint="With your OTP-verified phone, a college email or ID marks you as a verified student for rides">{(id) => <input id={id} className={inputCls} maxLength={30} value={f.collegeId || ''} onChange={(e) => setF({ ...f, collegeId: e.target.value })} />}</Field>
-              <Field label="College email (optional)" hint="Pre-fills event registration forms">{(id) => <input id={id} type="email" className={inputCls} value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />}</Field>
+              <Field label="College ID number (optional)" hint="Optional. Your verified college Google account already identifies you">{(id) => <input id={id} className={inputCls} maxLength={30} value={f.collegeId || ''} onChange={(e) => setF({ ...f, collegeId: e.target.value })} />}</Field>
+              <Field label={me.authMethod === 'google' ? 'Email (from your Google sign-in)' : 'College email (optional)'} hint="Pre-fills event registration forms">{(id) => <input id={id} type="email" className={inputCls} value={me.authMethod === 'google' ? me.email || '' : f.email} readOnly={me.authMethod === 'google'} onChange={(e) => setF({ ...f, email: e.target.value })} />}</Field>
             </div>
             <fieldset className="border-t border-line pt-5">
               <legend className="contents"><span className="block font-display text-[17px] font-semibold">Interests</span></legend>
@@ -101,11 +100,11 @@ export default function Profile({ query }) {
             <CardTitle eyebrow="Account">Identity</CardTitle>
             <dl className="flex flex-col gap-2 text-sm">
               <div className="flex justify-between gap-2"><dt className="text-muted">App user ID</dt><dd className="truncate font-mono text-xs">{me.id}</dd></div>
-              <div className="flex justify-between gap-2"><dt className="text-muted">Sign-in</dt><dd>{session.mode === 'demo' ? <Badge tone="demo">Demo · no OTP</Badge> : <Badge tone="ok" icon="shield">MiniMoth phone OTP</Badge>}</dd></div>
-              <div className="flex justify-between gap-2"><dt className="text-muted">Phone</dt><dd>{session.mode === 'minimoth' ? `${maskPhone(session.phone || me.phone)} · verified` : 'Not verified (demo)'}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-muted">Sign-in</dt><dd>{session.mode === 'demo' ? <Badge tone="demo">Demo · not signed in with Google</Badge> : <Badge tone="ok" icon="shield">Google account</Badge>}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-muted">Email</dt><dd>{session.mode === 'google' ? `${session.email || me.email} · verified by Google` : 'Not verified (demo)'}</dd></div>
               <div className="flex justify-between gap-2"><dt className="text-muted">College enrolment</dt><dd>Not verified</dd></div>
             </dl>
-            <p className="mt-2 text-xs text-muted">Phone OTP proves you control the number, not that you're enrolled.</p>
+            <p className="mt-2 text-xs text-muted">Google sign-in proves you own the account. Your class is confirmed separately by a teacher or the HOD.</p>
           </Card>
           <Card>
             <div className="flex items-center gap-4">

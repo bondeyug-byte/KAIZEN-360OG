@@ -193,7 +193,7 @@ export default function Layout({ route, children, full }) {
         )}
         {session.mode === 'demo' && (
           <div className="mx-3 mt-2 flex items-center justify-center gap-2 rounded-xl border border-[#E1DAF0] bg-[#F7F4FC]/90 px-4 py-1.5 text-center text-[12.5px] text-[#4E3570] lg:mx-6 xl:mx-8">
-            <Badge tone="demo">Demo</Badge><span>Simulated {ROLE_LABEL[r]} sign-in · no OTP<span className="hidden sm:inline"> · permissions are checked in this app only; production needs server-side enforcement</span></span>
+            <Badge tone="demo">Demo</Badge><span>Simulated {ROLE_LABEL[r]} sign-in · not a Google account<span className="hidden sm:inline"> · permissions are checked in this app only; production needs server-side enforcement</span></span>
           </div>
         )}
         <main className={cx('flex-1', full ? 'min-h-0' : 'mx-auto w-full max-w-[1240px] px-4 py-5 pb-28 sm:px-6 lg:px-6 lg:pb-12 xl:px-8')}>

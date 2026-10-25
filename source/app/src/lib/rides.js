@@ -7,9 +7,11 @@ import { notify } from './notifications.js'
  * Ride trust level. 'verified' = phone verified by OTP and a college email or ID on the profile; demo accounts
  * are 'demo' (allowed to try rides, clearly labelled); real accounts without the college detail are 'unverified'.
  */
-export const verificationOf = (p) => (!p ? 'unverified' : p.demo ? 'demo' : p.phoneVerified && (String(p.email || '').trim() || String(p.collegeId || '').trim()) ? 'verified' : 'unverified')
-const needsVerify = (u) => u?.authMethod === 'minimoth' && verificationOf(u) !== 'verified'
-const VERIFY_MSG = 'Verify first: add your college email or ID in your profile (your phone is already verified by OTP).'
+// Google accounts: verified when the Google-verified sign-in email is a college (…@ves.ac.in) account.
+const collegeEmail = (e) => { const x = String(e || '').trim().toLowerCase(); const i = x.lastIndexOf('@'); return i > 0 && x.indexOf('@') === i && x.slice(i + 1) === 'ves.ac.in' }
+export const verificationOf = (p) => (!p ? 'unverified' : p.demo ? 'demo' : p.authMethod === 'google' ? (collegeEmail(p.email) ? 'verified' : 'unverified') : p.phoneVerified && (String(p.email || '').trim() || String(p.collegeId || '').trim()) ? 'verified' : 'unverified')
+const needsVerify = (u) => ['google', 'minimoth'].includes(u?.authMethod) && verificationOf(u) !== 'verified'
+const VERIFY_MSG = 'Rides are for verified students: sign in with your college Google account (…@ves.ac.in).'
 export const SEAT = { AVAILABLE: 'Available', REQUESTED: 'Requested', CONFIRMED: 'Confirmed', DECLINED: 'Declined' }
 const N = (state, list, now) => (state.notifications ? notify(state, list, now) : state)
 

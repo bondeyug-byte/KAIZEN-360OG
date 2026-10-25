@@ -96,7 +96,7 @@ export function MyClass() {
           <Loading s={cat}>{cat.data && <DivisionPicker catalog={cat.data} mode="single" value={division} onChange={setDivision} idPrefix="join" />}</Loading>
           <div><Button type="submit" disabled={!division || busy}>{busy ? 'Sending…' : division ? `Request to join ${division}` : 'Choose your division'}</Button></div>
         </form>)}
-      <p className="mt-4 text-[12.5px] text-muted">Phone sign-in proves you own the number, not that you are in the class, so a teacher, your class rep or the HOD approves each request.</p>
+      <p className="mt-4 text-[12.5px] text-muted">Google sign-in proves you own your college account, not that you are in that class, so a teacher, your class rep or the HOD approves each request.</p>
     </Card>
   )
 }
@@ -189,7 +189,7 @@ export function JoinRequests({ hod = false, title = 'Join requests' }) {
               {tab === 'pending' && !r.self && <input type="checkbox" aria-label={`Select ${r.name || 'student'}`} checked={picked.includes(r.id)} onChange={(e) => setPicked(e.target.checked ? [...picked, r.id].slice(0, 50) : picked.filter((x) => x !== r.id))} />}
               <span className="font-semibold">{r.name || 'No name yet'}</span>
               {r.kind === 'transfer' && <Badge tone="info">Change from {r.from_division}</Badge>}
-              <span className="text-muted">{r.roll ? `Roll ${r.roll} · ` : ''}{r.division_code}{r.phone ? ` · ${r.phone}` : ''} · {relTime(tab === 'pending' ? r.created_at : r.decided_at, now)}</span>
+              <span className="text-muted">{r.roll ? `Roll ${r.roll} · ` : ''}{r.division_code}{r.contact ? ` · ${r.contact}` : ''} · {relTime(tab === 'pending' ? r.created_at : r.decided_at, now)}</span>
               {r.kind === 'transfer' && r.reason && <span className="basis-full text-[12.5px] text-muted">Reason: “{r.reason}”</span>}
               {tab !== 'pending' && <Badge tone={STATUS_TONE[r.status]}>{r.status}</Badge>}
               {r.decided_by_name && <span className="text-[12px] text-muted">by {r.decided_by_name} ({r.decided_as}){r.note ? ` · “${r.note}”` : ''}</span>}
@@ -229,7 +229,7 @@ export function CrRequests() {
   )
 }
 
-/* ---------------- Class list (CR: names + rolls only; teacher/HOD see masked phones; HOD manages CRs) ---------------- */
+/* ---------------- Class list (CR: names + rolls only; teacher/HOD see masked emails; HOD manages CRs) ---------------- */
 export function Roster({ division: fixed, hod = false }) {
   const { pushToast } = useApp()
   const cat = useCatalog()
@@ -244,7 +244,7 @@ export function Roster({ division: fixed, hod = false }) {
       {!fixed && options.length > 1 && <div className="mt-2 max-w-xs"><Field label="Division">{(id) => <select id={id} className={inputCls} value={division} onChange={(e) => setDivision(e.target.value)}>{options.map((d) => <option key={d.code}>{d.code}</option>)}</select>}</Field></div>}
       <Loading s={s}>{!s.data?.students?.length ? <p className="mt-2 text-[13.5px] text-muted">No approved students yet.</p> : (
         <ul className="mt-2 text-[13.5px]">{s.data.students.map((st) => (
-          <li key={st.id} className="flex flex-wrap items-center gap-2 border-t border-line py-1.5"><span className="w-16 text-muted">{st.roll || '—'}</span><span className="font-semibold">{st.name || 'No name yet'}</span>{st.phone && <span className="text-muted">{st.phone}</span>}{st.is_cr && <Badge tone="info">Class rep</Badge>}
+          <li key={st.id} className="flex flex-wrap items-center gap-2 border-t border-line py-1.5"><span className="w-16 text-muted">{st.roll || '—'}</span><span className="font-semibold">{st.name || 'No name yet'}</span>{st.contact && <span className="text-muted">{st.contact}</span>}{st.is_cr && <Badge tone="info">Class rep</Badge>}
             {hod && <span className="ml-auto flex gap-2">{st.is_cr
               ? <ConfirmButton size="sm" variant="ghost" confirmText="Remove as class rep" onConfirm={() => act(st, { route: 'cr-assign', payload: { studentId: st.id, division, action: 'remove' } }, 'Class rep removed.')}>Remove CR</ConfirmButton>
               : <Button size="sm" variant="secondary" onClick={() => act(st, { route: 'cr-assign', payload: { studentId: st.id, division } }, 'Class rep assigned.')}>Make class rep</Button>}

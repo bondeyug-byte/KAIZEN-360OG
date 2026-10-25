@@ -44,7 +44,7 @@ module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ code: 'method' });
   // Gemini costs money: only signed-in users may use it (others get the built-in offline assistant).
-  const phone = require('../_session').getPhone(req);
+  const phone = require('../_session').getIdentity(req);
   if (!phone) return res.status(401).json({ code: 'NO_SESSION' });
   // Per-number cap so one account can't run up the AI bill (a chat turn can use up to 5 calls).
   if (!(await underLimit('ai:' + phone, 150, 3600))) return res.status(429).json({ code: 'rate_limited' });

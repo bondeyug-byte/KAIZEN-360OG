@@ -1,13 +1,15 @@
 // Parent Portal server tests: real handlers + real Postgres (PGlite) + production-style signed cookies.
 // Synthetic numbers and names only. Run: npm test (in this folder).
-process.env.MINIMOTH_API_KEY = 'mm_test_k'; process.env.DATABASE_URL = 'postgres://u:p@h.example/db';
-process.env.HOD_PHONES = '9100000001=CMPN;9100000002=AIDS'; process.env.TEACHER_PHONES = '';
+process.env.SESSION_SECRET = 'test-session-secret-0123456789-abcdefgh'; process.env.DATABASE_URL = 'postgres://u:p@h.example/db';
+process.env.HOD_EMAILS = 'u9100000001@ves.ac.in=CMPN;u9100000002@ves.ac.in=AIDS';
 const path = require('path'), crypto = require('crypto'), assert = require('assert');
 const API = process.env.API_DIR || path.join(__dirname, '../../api');
 const { PGlite } = require('@electric-sql/pglite');
 const db = require(API + '/_db'); const app = require(API + '/app'); const { signInRole } = require(API + '/_access');
-const sign = (p) => crypto.createHmac('sha256', 'mm_test_k').update('phone:' + p).digest('hex').slice(0, 32);
-const C = (n) => `mm_phone=${encodeURIComponent('+91' + n)}.${sign('+91' + n)}`;
+const { sessionCookie } = require(API + '/_session');
+// Synthetic identities: 91000002xx = parents (personal Gmail), everyone else = @ves.ac.in college accounts.
+const E = (n) => (String(n).includes('@') ? String(n) : /^91000002/.test(String(n)) ? `p${n}@gmail.com` : `u${n}@ves.ac.in`);
+const C = (n) => sessionCookie(E(n)).split(';')[0];
 const call = (who, method, route, body, query = {}) => new Promise((ok) => {
   const res = { h: {}, setHeader(k, v) { this.h[k] = v; }, status(c) { this.c = c; return this; }, json(b) { ok({ status: this.c, body: b }); }, end(buf) { ok({ status: this.c, raw: buf }); } };
   app({ method, query: { ...query, route }, url: '/api/app/' + route, headers: { cookie: C(who) }, body }, res);
@@ -22,26 +24,26 @@ const today = new Date().toISOString().slice(0, 10), daysAgo = (n) => new Date(D
   const pg = new PGlite(); const run = (x, p) => pg.query(x, p).then((r) => r.rows); db._setClient(run);
   await db.ensureSchema();
   // setup: teacher T1 teaches D2A (CMPN); T_OTHER teaches D2B; S1 + S2 in D2A, S3 in D2B
-  await call(HOD, 'POST', 'teachers', { phone: T1, name: 'Prof Test' }); await call(HOD, 'POST', 'teacher-division', { phone: T1, division: 'D2A', subject: 'Maths' })
-  await call(HOD, 'POST', 'teachers', { phone: T_OTHER, name: 'Prof Other' }); await call(HOD, 'POST', 'teacher-division', { phone: T_OTHER, division: 'D2B', subject: 'Maths' })
+  await call(HOD, 'POST', 'teachers', { email: E(T1), name: 'Prof Test' }); await call(HOD, 'POST', 'teacher-division', { email: E(T1), division: 'D2A', subject: 'Maths' })
+  await call(HOD, 'POST', 'teachers', { email: E(T_OTHER), name: 'Prof Other' }); await call(HOD, 'POST', 'teacher-division', { email: E(T_OTHER), division: 'D2B', subject: 'Maths' })
   const ids = {}
   for (const [s, d, name, roll] of [[S1, 'D2A', 'Student One', '1'], [S2, 'D2A', 'Student Two', '2'], [S3, 'D2B', 'Student Three', '3']]) {
-    await call(s, 'PUT', 'me', { profile: { name, roll }, data: {}, baseVersion: 0 }); await run('update accounts set name = $2 where phone = $1', ['+91' + s, name])
+    await call(s, 'PUT', 'me', { profile: { name, roll }, data: {}, baseVersion: 0 }); await run('update accounts set name = $2 where phone = $1', [E(s), name])
     const r = await call(s, 'POST', 'join-requests', { division: d }); await call(HOD, 'POST', 'join-decision', { ids: [r.body.joinRequest.id], decision: 'approve' })
     ids[s] = (await call(s, 'GET', 'me')).body.account.id
   }
 
   await t('student adds a parent → pending; the parent is NOT a parent yet (no access)', async () => {
-    const r = await call(S1, 'POST', 'parent-links', { phone: P1, relation: 'Mother' }); assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.link.status, 'pending')
-    assert.equal((await signInRole('+91' + P1)).base, 'student')
+    const r = await call(S1, 'POST', 'parent-links', { email: E(P1), relation: 'Mother' }); assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.link.status, 'pending')
+    assert.equal((await signInRole(E(P1))).base, 'none') // a personal Gmail is nothing until the link is confirmed
     assert.equal((await call(P1, 'GET', 'parent-children')).status, 403)
-    assert.equal((await call(P1, 'GET', 'parent-record', null, { child: ids[S1] })).status, 404)
+    assert.equal((await call(P1, 'GET', 'parent-record', null, { child: ids[S1] })).body.code, 'NO_ACCESS')
   })
   await t('link rules: no own number, no staff number, no duplicates, needs a class', async () => {
-    assert.equal((await call(S1, 'POST', 'parent-links', { phone: S1 })).body.code, 'OWN_NUMBER')
-    assert.equal((await call(S1, 'POST', 'parent-links', { phone: T1 })).body.code, 'STAFF_NUMBER')
-    assert.equal((await call(S1, 'POST', 'parent-links', { phone: P1 })).body.code, 'ALREADY_LINKED')
-    assert.equal((await call('9100000150', 'POST', 'parent-links', { phone: P2 })).status, 403) // not in a class
+    assert.equal((await call(S1, 'POST', 'parent-links', { email: E(S1) })).body.code, 'OWN_EMAIL')
+    assert.equal((await call(S1, 'POST', 'parent-links', { email: E(T1) })).body.code, 'STAFF_EMAIL')
+    assert.equal((await call(S1, 'POST', 'parent-links', { email: E(P1) })).body.code, 'ALREADY_LINKED')
+    assert.equal((await call('9100000150', 'POST', 'parent-links', { email: E(P2) })).status, 403) // not in a class
   })
   let linkId
   await t('only the class teacher or branch HOD can confirm; other teachers cannot', async () => {
@@ -53,15 +55,15 @@ const today = new Date().toISOString().slice(0, 10), daysAgo = (n) => new Date(D
     assert.equal((await call(HOD, 'POST', 'parent-link-decision', { ids: [linkId], decision: 'reject' })).body.results[0].error, 'Already approved.')
   })
   await t('after confirmation the number signs in as a parent and sees exactly one child', async () => {
-    assert.equal((await signInRole('+91' + P1)).base, 'parent')
+    assert.equal((await signInRole(E(P1))).base, 'parent')
     const me = (await call(P1, 'GET', 'me')).body; assert.equal(me.role, 'parent'); assert.equal(me.parent.children, 1)
     const kids = (await call(P1, 'GET', 'parent-children')).body.children; assert.equal(kids.length, 1); assert.equal(kids[0].id, ids[S1])
   })
   await t('multiple children: a second confirmed child appears; multiple guardians per student allowed', async () => {
-    const r = await call(S3, 'POST', 'parent-links', { phone: P1, relation: 'Mother' }); const id = r.body.link.id
+    const r = await call(S3, 'POST', 'parent-links', { email: E(P1), relation: 'Mother' }); const id = r.body.link.id
     await call(T_OTHER, 'POST', 'parent-link-decision', { ids: [id], decision: 'approve' })
     assert.equal((await call(P1, 'GET', 'parent-children')).body.children.length, 2)
-    const r2 = await call(S1, 'POST', 'parent-links', { phone: P2, relation: 'Father' }); await call(HOD, 'POST', 'parent-link-decision', { ids: [r2.body.link.id], decision: 'approve' })
+    const r2 = await call(S1, 'POST', 'parent-links', { email: E(P2), relation: 'Father' }); await call(HOD, 'POST', 'parent-link-decision', { ids: [r2.body.link.id], decision: 'approve' })
     assert.equal((await call(P2, 'GET', 'parent-children')).body.children.length, 1)
   })
   await t('cross-student access is refused (other student id, random id, staff-only routes, writes)', async () => {
@@ -75,7 +77,7 @@ const today = new Date().toISOString().slice(0, 10), daysAgo = (n) => new Date(D
     assert.equal((await call(P2, 'POST', 'assessments', { division: 'D2A', subject: 'Maths', name: 'Hack', maxMarks: 10 })).status, 403)
     assert.equal((await call(P2, 'POST', 'alerts', { division: 'D2A', studentId: ids[S1], title: 'Hack' })).status, 403)
     assert.equal((await call(P2, 'POST', 'join-requests', { division: 'D2A' })).status, 403)
-    assert.equal((await call(P2, 'POST', 'parent-links', { phone: P3 })).status, 403)
+    assert.equal((await call(P2, 'POST', 'parent-links', { email: E(P3) })).status, 403)
   })
   await t('empty data: record shows no attendance percentage and no marks (nothing invented)', async () => {
     const r = (await call(P1, 'GET', 'parent-record', null, { child: ids[S1] })).body
@@ -164,13 +166,14 @@ const today = new Date().toISOString().slice(0, 10), daysAgo = (n) => new Date(D
     const mine = (await call(S1, 'GET', 'parent-links')).body.links.find((l) => l.relation === 'Father')
     assert.equal((await call(S2, 'DELETE', 'parent-links', null, { id: mine.id })).status, 404) // not their link
     assert.equal((await call(S1, 'DELETE', 'parent-links', null, { id: mine.id })).status, 200)
-    assert.equal((await call(P2, 'GET', 'parent-record', null, { child: ids[S1] })).status, 404)
-    assert.equal((await call(P2, 'GET', 'me')).body.role, 'student')
+    // a personal Gmail with no confirmed link has no access at all (not even a student account)
+    assert.equal((await call(P2, 'GET', 'parent-record', null, { child: ids[S1] })).body.code, 'NO_ACCESS')
+    assert.equal((await call(P2, 'GET', 'me')).body.code, 'NO_ACCESS')
   })
   await t('every write is in the audit log; parents created none', async () => {
     const acts = (await run('select action from audit_log')).map((r) => r.action)
     for (const a of ['parent.link.request', 'parent.link.approve', 'attendance.record', 'attendance.update', 'assessment.publish', 'marks.save', 'alert.published', 'event.cancelled', 'parent.link.revoke']) assert.ok(acts.includes(a), a)
-    const p1 = (await run(`select id from accounts where phone = '+91${P1}'`))[0].id
+    const p1 = (await run(`select id from accounts where phone = '${E(P1)}'`))[0].id
     assert.equal((await run(`select count(*)::int n from audit_log where actor = $1 and action <> 'account.create'`, [p1]))[0].n, 0)
   })
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0)

@@ -4,6 +4,10 @@ import { makeSeed, emptyUserData, DEMO_USERS, refreshDemoTimes } from '../data/s
 import * as auth from '../lib/auth.js'
 import { loadAccount, saveAccount, adoptAccount, syncableProfile } from '../lib/account.js'
 import { TRUSTED_DEMO } from '../lib/roles.js'
+
+// Demo sign-in (fictional sample users, browser-only data) exists only in the offline demo file. The deployed site
+// is built with __DEMO__ = false, so there is no way to enter it without a real Google sign-in.
+const DEMO_ENABLED = typeof __DEMO__ === 'undefined' ? true : __DEMO__ // eslint-disable-line no-undef
 import { notify, deadlineNotifications, markRead, markAllRead } from '../lib/notifications.js'
 
 const Ctx = createContext(null)
@@ -16,9 +20,8 @@ export function AppProvider({ children }) {
   const [db, setDbState] = useState(initial.db)
   const [toasts, setToasts] = useState([])
   const [now, setNow] = useState(() => new Date())
-  const [session, setSession] = useState({ status: 'loading', mode: null, userId: null, accessToken: null, expiresAt: null, phone: null, message: null })
+  const [session, setSession] = useState({ status: 'loading', mode: null, userId: null, email: null, phone: null, message: null })
   const [server, setServer] = useState({ checked: false, available: false, configured: false })
-  const refreshTimer = useRef(null)
   // Cloud sync state. `acct` holds the server version this browser last saw and the JSON last sent.
   const [sync, setSync] = useState({ status: 'off', at: null })
   const acct = useRef({ version: null, lastSent: null, timer: null, saving: false })
@@ -55,57 +58,54 @@ export function AppProvider({ children }) {
   }, [])
 
   /* ---------------- Authentication ---------------- */
-  const scheduleRefresh = useCallback((expiresAt) => {
-    clearTimeout(refreshTimer.current)
-    const at = Date.parse(expiresAt)
-    const wait = Number.isFinite(at) ? Math.max(15000, at - Date.now() - 60000) : 240000
-    refreshTimer.current = setTimeout(async () => {
-      try {
-        const r = await auth.restoreSession()
-        setSession((s) => ({ ...s, accessToken: r.access_token, expiresAt: r.expires_at, ...rolesFrom(r) }))
-        scheduleRefresh(r.expires_at)
-      } catch (e) {
-        // A failed silent refresh ends the session: back to sign-in with a clear message.
-        setSession({ status: 'signedOut', mode: null, userId: null, accessToken: null, expiresAt: null, phone: null, message: 'Your session has ended. Please sign in again.' })
-        if (!/^#\/(login|welcome)?$/.test(window.location.hash)) window.location.hash = '/login'
-      }
-    }, wait)
+  // Google sign-in (lib/auth.js). The server keeps the session in an HttpOnly cookie and re-checks the domain and
+  // role on every request, so there is no token in the page to refresh. A 401/403 from the server ends the session.
+  const endSession = useCallback((message) => {
+    setSession({ status: 'signedOut', mode: null, userId: null, email: null, phone: null, message })
+    if (!/^#\/(login|welcome)?(\?|$)/.test(window.location.hash)) window.location.hash = '/login'
   }, [])
+  const ENDED = ['NO_SESSION', 'SESSION_ENDED', 'NO_ACCESS']
 
-  // Role comes from verified sources only: `admin` from the server's ADMIN_PHONES check, `teacher` from the
-  // admin-maintained staff allowlist matched on the OTP-verified phone. A profile can't promote itself.
-  const ensureProfileForIdentity = useCallback((identityId, phone, admin = false) => {
-    const id = `mm_${identityId}`
+  // A local profile for the signed-in Google account. Roles never come from here: they come from the server.
+  const ensureProfileForIdentity = useCallback((email, name = '') => {
+    const id = `g_${email}`
     setDb((d) => {
-      const staff = (d.shared.staffAllowlist || []).find((x) => x.active !== false && x.phone && phone && x.phone.replace(/\D/g, '').slice(-10) === String(phone).replace(/\D/g, '').slice(-10))
-      const roleBits = admin ? { role: 'admin' } : staff ? { role: 'teacher', teaches: staff.teaches, name: d.profiles[id]?.name || staff.name, email: staff.email || d.profiles[id]?.email || '' } : { role: d.profiles[id]?.role === 'admin' || d.profiles[id]?.role === 'teacher' ? undefined : d.profiles[id]?.role }
-      if (d.profiles[id]) return { ...d, profiles: { ...d.profiles, [id]: { ...d.profiles[id], ...roleBits, phone, phoneVerified: true } } }
+      if (d.profiles[id]) return { ...d, profiles: { ...d.profiles, [id]: { ...d.profiles[id], email, role: undefined, teaches: undefined } } }
       return {
         ...d,
-        profiles: { ...d.profiles, [id]: { id, name: '', classId: '', branch: '', year: '', interests: [], subjects: [], phone, phoneVerified: true, authMethod: 'minimoth', demo: false, ...roleBits } },
+        profiles: { ...d.profiles, [id]: { id, name: name || '', classId: '', branch: '', year: '', interests: [], subjects: [], email, phone: null, phoneVerified: false, authMethod: 'google', demo: false } },
         userData: { ...d.userData, [id]: emptyUserData() },
       }
     })
     return id
   }, [setDb])
 
-  /** Switch an OTP session to its cloud account: the same account and data on every device. */
-  const attachAccount = useCallback(async (phone) => {
+  /** Switch a signed-in session to its cloud account: the same account and data on every device. */
+  const attachAccount = useCallback(async (email) => {
     setSync({ status: 'loading', at: null })
     try {
       const r = await loadAccount()
-      const { db: next, uid, migrated } = adoptAccount(dbRef.current, r, phone, emptyUserData)
+      const { db: next, uid, migrated } = adoptAccount(dbRef.current, r, email, emptyUserData)
       setDb(next)
       const snap = JSON.stringify({ profile: syncableProfile(next.profiles[uid]), data: next.userData[uid] })
       acct.current = { ...acct.current, version: r.version, lastSent: migrated ? null : snap }
-      setSession((s) => (s.mode === 'minimoth' ? { ...s, userId: uid, cloud: true, ...rolesFrom(r) } : s))
+      setSession((s) => (s.mode === 'google' ? { ...s, userId: uid, cloud: true, ...rolesFrom(r) } : s))
       setSync({ status: 'synced', at: new Date() })
       if (migrated) pushToast('Your profile from this browser was copied to your account. It now syncs across devices.')
     } catch (e) {
       acct.current = { ...acct.current, version: null }
+      if (ENDED.includes(e.code)) { setSync({ status: 'off', at: null }); return endSession(e.message) }
       setSync({ status: e.code === 'NETWORK' ? 'offline' : 'unavailable', at: null, message: e.message })
     }
-  }, [setDb, pushToast])
+  }, [setDb, pushToast, endSession]) // eslint-disable-line
+
+  const startSession = useCallback((r) => {
+    const uid = ensureProfileForIdentity(r.email, r.name)
+    if (r.teacher?.name || r.name) setDb((d) => (d.profiles[uid] && !d.profiles[uid].name ? { ...d, profiles: { ...d.profiles, [uid]: { ...d.profiles[uid], name: r.teacher?.name || r.name } } } : d))
+    setSession({ status: 'signedIn', mode: 'google', userId: uid, email: r.email, phone: null, ...rolesFrom(r), message: null })
+    attachAccount(r.email)
+    return uid
+  }, [ensureProfileForIdentity, attachAccount, setDb])
 
   useEffect(() => {
     let cancelled = false
@@ -113,55 +113,53 @@ export function AppProvider({ children }) {
       const s = await auth.serverAvailable()
       if (cancelled) return
       setServer({ checked: true, ...s })
-      const demoUser = prefs.get('demoUser', null)
+      const demoUser = DEMO_ENABLED ? prefs.get('demoUser', null) : null
       if (demoUser && dbRef.current.profiles[demoUser]) {
-        setSession({ status: 'signedIn', mode: 'demo', userId: demoUser, accessToken: null, expiresAt: null, phone: null, message: null })
+        setSession({ status: 'signedIn', mode: 'demo', userId: demoUser, email: null, phone: null, message: null })
         return
       }
       if (s.available && s.configured) {
+        // Coming back from a redirect sign-in (popup was blocked): finish it first.
+        try {
+          const r = await auth.finishPendingSignIn()
+          if (cancelled) return
+          if (r) { startSession(r); return }
+        } catch (e) {
+          if (!cancelled) { setSession((x) => ({ ...x, status: 'signedOut', message: e.message })); return }
+        }
         try {
           const r = await auth.restoreSession()
           if (cancelled) return
-          const uid = ensureProfileForIdentity(r.identity_id || r.phone, r.phone, !!r.admin)
-          setSession({ status: 'signedIn', mode: 'minimoth', userId: uid, accessToken: r.access_token, expiresAt: r.expires_at, phone: r.phone, ...rolesFrom(r), message: null })
-          scheduleRefresh(r.expires_at)
-          attachAccount(r.phone)
+          startSession(r)
           return
         } catch (e) {
-          // No session is normal; an expired or revoked one gets a message on the sign-in page.
-          if (!cancelled && e?.code && e.code !== 'NO_SESSION' && e.code !== 'NETWORK') { setSession((x) => ({ ...x, status: 'signedOut', message: 'Your session has ended. Please sign in again.' })); return }
+          // No session is normal; an ended or refused one gets a message on the sign-in page.
+          if (!cancelled && e?.code && e.code !== 'NO_SESSION' && e.code !== 'NETWORK') { setSession((x) => ({ ...x, status: 'signedOut', message: e.message })); return }
         }
       }
       setSession((x) => ({ ...x, status: 'signedOut' }))
     })()
-    return () => { cancelled = true; clearTimeout(refreshTimer.current) }
+    return () => { cancelled = true }
   }, []) // eslint-disable-line
 
-  const completeOtpLogin = useCallback((r) => {
-    const uid = ensureProfileForIdentity(r.identity_id || r.phone, r.phone, !!r.admin)
-    if (r.teacher?.name) setDb((d) => (d.profiles[uid] && !d.profiles[uid].name ? { ...d, profiles: { ...d.profiles, [uid]: { ...d.profiles[uid], name: r.teacher.name } } } : d))
-    setSession({ status: 'signedIn', mode: 'minimoth', userId: uid, accessToken: r.access_token, expiresAt: r.expires_at, phone: r.phone, ...rolesFrom(r), message: null })
-    scheduleRefresh(r.expires_at)
-    attachAccount(r.phone)
-    return uid
-  }, [ensureProfileForIdentity, scheduleRefresh, attachAccount])
+  /** Called by the sign-in page with the server's answer to a verified Google sign-in. */
+  const completeGoogleLogin = startSession
 
   const demoLogin = useCallback((userId) => {
-    if (!DEMO_USERS.includes(userId)) return
+    if (!DEMO_ENABLED || !DEMO_USERS.includes(userId)) return
     prefs.set('demoUser', userId)
-    setSession({ status: 'signedIn', mode: 'demo', userId, accessToken: null, expiresAt: null, phone: null, message: null })
+    setSession({ status: 'signedIn', mode: 'demo', userId, email: null, phone: null, message: null })
   }, [])
 
   const signOut = useCallback(async (message = null) => {
-    clearTimeout(refreshTimer.current)
     clearTimeout(acct.current.timer)
     acct.current = { version: null, lastSent: null, timer: null, saving: false }
     setSync({ status: 'off', at: null })
-    if (session.mode === 'minimoth') {
-      try { await auth.logout(session.accessToken) } catch { /* cookies are cleared server-side anyway */ }
+    if (session.mode === 'google') {
+      try { await auth.logout() } catch { /* the cookie also expires on its own */ }
     }
     prefs.set('demoUser', null)
-    setSession({ status: 'signedOut', mode: null, userId: null, accessToken: null, expiresAt: null, phone: null, message })
+    setSession({ status: 'signedOut', mode: null, userId: null, email: null, phone: null, message })
   }, [session])
 
   const resetDemo = useCallback(() => {
@@ -174,16 +172,15 @@ export function AppProvider({ children }) {
   }, [pushToast])
 
   /* ---------------- Data helpers ---------------- */
-  // For OTP sessions the role is re-derived from verified sources on every render (server admin flag, staff allowlist
+  // For Google sessions the role is re-derived from verified sources on every render (server admin flag, staff allowlist
   // matched on the verified phone), so editing a stored profile can't grant admin or teacher access.
   const me = useMemo(() => {
     let p = session.userId ? db.profiles[session.userId] : null
     if (!p) return p
     // Demo accounts: role and class assignments come from the trusted table in code, never from storage.
     if (session.mode === 'demo') { const t = TRUSTED_DEMO[session.userId]; if (!t) return null; return { ...p, role: t.role === 'student' ? undefined : t.role, teaches: t.teaches, classRep: t.classRep } }
-    if (session.mode !== 'minimoth') return null
-    const digits = (x) => String(x || '').replace(/\D/g, '').slice(-10)
-    const staff = (db.shared.staffAllowlist || []).find((x) => x.active !== false && x.phone && session.phone && digits(x.phone) === digits(session.phone))
+    if (session.mode !== 'google') return null
+    const staff = null // phone-number staff list (demo admin page) no longer grants anything; roles come from the server
     if (p.classRep) p = { ...p, classRep: false } // class rep is assigned by the app, never by a profile edit
     // Phone accounts: the role comes from the server (HOD outranks teacher, teacher outranks student).
     if (session.hod) return { ...p, role: 'hod', hodBranches: session.hod.branches, teaches: undefined }
@@ -195,7 +192,7 @@ export function AppProvider({ children }) {
     }
     if (staff) return { ...p, role: 'teacher', teaches: staff.teaches }
     return p.role === 'admin' || p.role === 'teacher' || p.role === 'organiser' ? { ...p, role: undefined, teaches: undefined } : p
-  }, [db.profiles, db.shared.staffAllowlist, session.userId, session.mode, session.phone, session.admin, session.teacher, session.hod, session.parent, session.cloud, session.cr, session.enrollment])
+  }, [db.profiles, db.shared.staffAllowlist, session.userId, session.mode, session.email, session.admin, session.teacher, session.hod, session.parent, session.cloud, session.cr, session.enrollment])
   const myData = session.userId ? db.userData[session.userId] : null
 
   /** Apply a pure shared-state transition from src/lib/*. Returns the result. */
@@ -241,14 +238,17 @@ export function AppProvider({ children }) {
       const r = await loadAccount()
       if (`acc_${r.account.id}` !== uid) return
       // Roles can change at any time (teacher removed, class rep appointed or removed): always take the server's view.
-      setSession((s) => (s.mode === 'minimoth' && s.userId === uid ? { ...s, ...rolesFrom(r) } : s))
+      setSession((s) => (s.mode === 'google' && s.userId === uid ? { ...s, ...rolesFrom(r) } : s))
       if (r.version === acct.current.version) return
-      const { db: next } = adoptAccount(dbRef.current, r, session.phone, emptyUserData)
+      const { db: next } = adoptAccount(dbRef.current, r, session.email, emptyUserData)
       acct.current = { ...acct.current, version: r.version, lastSent: JSON.stringify({ profile: syncableProfile(next.profiles[uid]), data: next.userData[uid] }) }
       setDb(next)
       setSync({ status: 'synced', at: new Date() })
-    } catch (e) { setSync((x) => ({ ...x, status: e.code === 'NETWORK' ? 'offline' : x.status })) }
-  }, [cloudUid, session.phone, setDb])
+    } catch (e) {
+      if (ENDED.includes(e.code)) return endSession(e.message) // signed out elsewhere, link removed, or no longer allowed
+      setSync((x) => ({ ...x, status: e.code === 'NETWORK' ? 'offline' : x.status }))
+    }
+  }, [cloudUid, session.email, setDb, endSession]) // eslint-disable-line
 
   const profileNow = cloudUid ? db.profiles[cloudUid] : null
   const dataNow = cloudUid ? db.userData[cloudUid] : null
@@ -269,7 +269,7 @@ export function AppProvider({ children }) {
       } catch (e) {
         if (e.code === 'VERSION_CONFLICT' && e.data) {
           // Another device saved first. Its copy wins; this device's unsaved edit is dropped and the user told.
-          const { db: next } = adoptAccount(dbRef.current, { account: { id: cloudUid.slice(4), name: '' }, profile: e.data.profile, data: e.data.data }, session.phone, emptyUserData)
+          const { db: next } = adoptAccount(dbRef.current, { account: { id: cloudUid.slice(4), name: '' }, profile: e.data.profile, data: e.data.data }, session.email, emptyUserData)
           acct.current = { ...acct.current, version: e.data.version, lastSent: JSON.stringify({ profile: syncableProfile(next.profiles[cloudUid]), data: next.userData[cloudUid] }) }
           setDb(next)
           setSync({ status: 'synced', at: new Date() })
@@ -294,12 +294,12 @@ export function AppProvider({ children }) {
   /** Re-read roles/enrollment from the server now (after joining, approvals, CR changes). */
   const refreshAccount = useCallback(async () => {
     if (!session.cloud) return
-    try { const r = await loadAccount(); setSession((s) => (s.mode === 'minimoth' ? { ...s, ...rolesFrom(r) } : s)) } catch { /* next focus will retry */ }
+    try { const r = await loadAccount(); setSession((s) => (s.mode === 'google' ? { ...s, ...rolesFrom(r) } : s)) } catch { /* next focus will retry */ }
   }, [session.cloud])
   const value = {
     refreshAccount,
     db, setDb, now, toasts, pushToast, session, server, me, myData, sync,
-    completeOtpLogin, demoLogin, signOut, resetDemo, runShared, updateMyData, updateProfile, markNotificationsRead, markAllNotificationsRead,
+    completeGoogleLogin, demoLogin, demoEnabled: DEMO_ENABLED, signOut, resetDemo, runShared, updateMyData, updateProfile, markNotificationsRead, markAllNotificationsRead,
     signedIn: session.status === 'signedIn',
   }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

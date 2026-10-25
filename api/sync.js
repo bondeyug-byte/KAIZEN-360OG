@@ -1,6 +1,6 @@
 // api/sync.js: stores the app's shared teacher/student items in Neon.
 // Uses the same signed login cookie and roles as api/app.js.
-const { getPhone } = require('./_session');
+const { getSession } = require('./_session');
 const access = require('./_access');
 const db = require('./_db');
 
@@ -41,14 +41,15 @@ function forStudent(rows, me, division) {
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
-    const phone = getPhone(req);
-    if (!phone) return res.status(401).json({ ok: false, code: 'NO_SESSION', error: 'Sign in required.' });
+    const session = getSession(req);
+    if (!session) return res.status(401).json({ ok: false, code: 'NO_SESSION', error: 'Sign in required.' });
     await db.ensureSchema();
     await db.q(`create table if not exists shared_items (
       col text not null, id text not null, owner text not null,
       data jsonb not null, updated_at timestamptz not null default now(),
       primary key (col, id))`);
-    const who = await access.resolve(phone);
+    const who = await access.resolve(session.email, session.iat);
+    if (who.base === 'none' || who.base === 'parent') return res.status(403).json({ ok: false, code: 'NO_ACCESS', error: 'Not available for this account.' });
     // Roles v2: who.base is 'hod' | 'teacher' | 'student' (api/_access.js). HOD keeps the old admin powers here.
     const isHod = who.base === 'hod';
     const staff = isHod || who.base === 'teacher';

@@ -44,7 +44,7 @@ function useVerifyGate() {
   const dialog = (
     <Dialog open={!!pending} onClose={() => setPending(null)} title="Verify before you ride">
       {pending && <div className="flex flex-col gap-3 text-[14px]">
-        <p>Riders must be verified students: phone confirmed by OTP <b>and</b> a college email or ID on the profile. Anyone can browse rides; requesting a seat or offering a ride needs verification.</p>
+        <p>Riders must be verified students: signed in with a college Google account (…@ves.ac.in). Anyone can browse rides; requesting a seat or offering a ride needs verification.</p>
         {v === 'demo' ? <p className="rounded-lg bg-[#F7F4FC] px-3 py-2 text-[13.5px] text-[#4E3570]">You’re using a <b>demo account</b>, which can’t be verified. You can continue to try the flow; nothing is shared with real people.</p>
           : <p className="rounded-lg bg-[#FDF0D8] px-3 py-2 text-[13.5px] text-warn">Your phone is verified. Add your college email or college ID in your profile to finish.</p>}
         <div className="flex flex-wrap justify-end gap-2">

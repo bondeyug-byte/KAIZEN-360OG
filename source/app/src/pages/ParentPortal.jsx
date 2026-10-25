@@ -1,4 +1,4 @@
-// Parent Portal: read-only view of the child (or children) the college confirmed for this phone number.
+// Parent Portal: read-only view of the child (or children) the college confirmed for this Google account.
 // Every value comes from the server (api/_records.js), which re-checks the parent ↔ student link on each request.
 import { useEffect, useState } from 'react'
 import { useApp } from '../store/AppContext.jsx'
@@ -11,7 +11,7 @@ const KIND = { alert: ['Alert', 'bad'], marks: ['Marks', 'ok'], notice: ['Notice
 export default function ParentPortal() {
   const { session, me } = useApp()
   const [kids, setKids] = useState(null), [err, setErr] = useState(''), [child, setChild] = useState(''), [rec, setRec] = useState(null), [loading, setLoading] = useState(false), [stamp, setStamp] = useState(null)
-  const cloud = session.mode === 'minimoth'
+  const cloud = session.mode === 'google'
   useEffect(() => {
     if (!cloud) return
     api('parent-children').then((r) => { setKids(r.children); if (r.children[0]) setChild((c) => c || r.children[0].id) }).catch((e) => setErr(e.message))
@@ -22,10 +22,10 @@ export default function ParentPortal() {
   useEffect(() => { const on = () => { if (document.visibilityState === 'visible' && stamp && Date.now() - stamp > 60000) load() }; document.addEventListener('visibilitychange', on); return () => document.removeEventListener('visibilitychange', on) })
   const seen = async () => { try { await api('parent-seen', { method: 'POST', body: { child } }); load() } catch (e) { setErr(e.message) } }
 
-  if (!cloud) return <Empty icon="lock" title="The Parent portal needs the college server">Sign in on the Parent tab with the phone number your child added and their class teacher confirmed. There is no demo parent account because this view shows a real student's record.</Empty>
+  if (!cloud) return <Empty icon="lock" title="The Parent portal needs the college server">Sign in on the Parent tab with the Google account your child added and their class teacher confirmed. There is no demo parent account because this view shows a real student's record.</Empty>
   if (err && !rec) return <Card><p role="alert" className="text-[14px] text-bad">{err}</p><Button className="mt-3" size="sm" variant="secondary" onClick={() => load()}>Try again</Button></Card>
   if (!kids) return <Spinner label="Loading your child's record" />
-  if (!kids.length) return <Empty icon="user" title="No confirmed student yet">Your child adds your number in Campus360 (College portal → My class), then their class teacher confirms it.</Empty>
+  if (!kids.length) return <Empty icon="user" title="No confirmed student yet">Your child adds your Google account email in Campus360 (College portal → My class), then their class teacher confirms it.</Empty>
   const news = rec?.whatsNew
   return (
     <div className="flex flex-col gap-4">

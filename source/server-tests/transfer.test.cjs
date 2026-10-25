@@ -1,13 +1,15 @@
 // Division change (transfer) + attendance single-source tests: real handlers, real Postgres (PGlite), signed cookies.
 // Synthetic numbers and names only. Run: npm test (in this folder).
-process.env.MINIMOTH_API_KEY = 'mm_test_k'; process.env.DATABASE_URL = 'postgres://u:p@h.example/db';
-process.env.HOD_PHONES = '9100000001=CMPN;9100000002=AIDS'; process.env.TEACHER_PHONES = '';
+process.env.SESSION_SECRET = 'test-session-secret-0123456789-abcdefgh'; process.env.DATABASE_URL = 'postgres://u:p@h.example/db';
+process.env.HOD_EMAILS = 'u9100000001@ves.ac.in=CMPN;u9100000002@ves.ac.in=AIDS';
 const path = require('path'), crypto = require('crypto'), assert = require('assert');
 const API = process.env.API_DIR || path.join(__dirname, '../../api');
 const { PGlite } = require('@electric-sql/pglite');
 const db = require(API + '/_db'); const app = require(API + '/app'); const sync = require(API + '/sync');
-const sign = (p) => crypto.createHmac('sha256', 'mm_test_k').update('phone:' + p).digest('hex').slice(0, 32);
-const C = (n) => `mm_phone=${encodeURIComponent('+91' + n)}.${sign('+91' + n)}`;
+const { sessionCookie } = require(API + '/_session');
+// Synthetic identities: 91000002xx = parents (personal Gmail), everyone else = @ves.ac.in college accounts.
+const E = (n) => (String(n).includes('@') ? String(n) : /^91000002/.test(String(n)) ? `p${n}@gmail.com` : `u${n}@ves.ac.in`);
+const C = (n) => sessionCookie(E(n)).split(';')[0];
 const mkRes = (ok) => ({ h: {}, setHeader(k, v) { this.h[k] = v; }, status(c) { this.c = c; return this; }, json(b) { ok({ status: this.c, body: b }); }, end(buf) { ok({ status: this.c, raw: buf }); } });
 const call = (who, method, route, body, query = {}) => new Promise((ok) => app({ method, query: { ...query, route }, url: '/api/app/' + route, headers: { cookie: C(who) }, body }, mkRes(ok)));
 const syncCall = (who, method, body) => new Promise((ok) => sync({ method, query: {}, url: '/api/sync', headers: { cookie: C(who) }, body }, mkRes(ok)));
@@ -19,8 +21,8 @@ const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0
 (async () => {
   const pg = new PGlite(); const run = (x, p) => pg.query(x, p).then((r) => r.rows); db._setClient(run);
   await db.ensureSchema();
-  await call(HOD, 'POST', 'teachers', { phone: TA, name: 'Prof A' }); await call(HOD, 'POST', 'teacher-division', { phone: TA, division: 'D2A', subject: 'Maths' })
-  await call(HOD, 'POST', 'teachers', { phone: TB, name: 'Prof B' }); await call(HOD, 'POST', 'teacher-division', { phone: TB, division: 'D2B', subject: 'Maths' })
+  await call(HOD, 'POST', 'teachers', { email: E(TA), name: 'Prof A' }); await call(HOD, 'POST', 'teacher-division', { email: E(TA), division: 'D2A', subject: 'Maths' })
+  await call(HOD, 'POST', 'teachers', { email: E(TB), name: 'Prof B' }); await call(HOD, 'POST', 'teacher-division', { email: E(TB), division: 'D2B', subject: 'Maths' })
   const ids = {}
   for (const [s, d, name] of [[S1, 'D2A', 'Student One'], [S2, 'D2A', 'Student Two'], [S3, 'D2B', 'Student Three']]) {
     await call(s, 'PUT', 'me', { profile: { name, roll: s.slice(-2) }, data: {}, baseVersion: 0 })
@@ -134,7 +136,7 @@ const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0
       { c: 'events', id: 'ev_1', data: { id: 'ev_1', title: 'Fest' } },
     ]
     assert.equal((await syncCall(TB, 'POST', { items })).body.saved, 4)
-    await syncCall(S1, 'POST', { items: [{ c: 'registrations', id: 'reg_1', data: { id: 'reg_1', eventId: 'ev_1', userId: acc(S1), userName: 'Student One', status: 'pending', form: { phone: '9100000101', email: 'x@example.com' } } }] })
+    await syncCall(S1, 'POST', { items: [{ c: 'registrations', id: 'reg_1', data: { id: 'reg_1', eventId: 'ev_1', userId: acc(S1), userName: 'Student One', status: 'pending', form: { email: E('9100000101'), email: 'x@example.com' } } }] })
     const got = (await syncCall(S3, 'GET')).body.items, by = (id) => got.find((x) => x.id === id)
     assert.deepEqual(by('att_1').data.records, { [acc(S3)]: 'A' })
     assert.ok(by('post_b') && !by('post_a'))

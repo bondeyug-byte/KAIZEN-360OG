@@ -1,19 +1,20 @@
 // Audit 2026-10 end-to-end: attendance single source + division change + CSP, in real browsers against the real
 // API handlers (MiniMoth stubbed, PGlite) with the vercel.json headers applied. Synthetic numbers and names only.
 import { chromium } from 'playwright' // or the path to your Playwright install
-const BASE = process.env.BASE || 'http://localhost:4320/'
+const BASE = process.env.BASE || 'http://localhost:4340/'
 const b = await chromium.launch({ executablePath: process.env.CHROME_PATH })
 const out = []; const check = (n, ok, i = '') => { out.push({ n, ok }); console.log(ok ? 'PASS' : 'FAIL', n, !ok && i ? '→ ' + String(i).slice(0, 300) : '') }
 const wait = (x, ms = 900) => x.p.waitForTimeout(ms)
 const csp = []
+const E = (n) => (n === '9100000001' ? 'hod.cmpn@ves.ac.in' : `u${n}@ves.ac.in`)
 async function person(name, phone, role = 'student', viewport = { width: 1300, height: 900 }) {
   const ctx = await b.newContext({ viewport, timezoneId: 'Asia/Kolkata' }); await ctx.route(/fonts\.(googleapis|gstatic)/, (r) => r.abort()); const p = await ctx.newPage()
   const errs = []; p.on('pageerror', (e) => errs.push(e.message))
   p.on('console', (m) => { const t = m.text(); if (/Content Security Policy|Refused to/i.test(t)) csp.push(name + ': ' + t.slice(0, 200)); else if (m.type() === 'error' && !/^Failed to load resource/.test(t)) errs.push(t) })
   const x = { name, p, errs, ctx }
-  await p.goto(BASE + '#/login?role=' + role); await wait(x, 700)
-  await p.getByLabel('Mobile number').fill(phone); await p.getByRole('button', { name: 'Send code' }).click(); await wait(x, 700)
-  await p.getByLabel('6-digit code').fill('123456'); await p.getByRole('button', { name: /Verify and sign in/ }).click(); await wait(x, 2000)
+  await ctx.addInitScript((email) => { window.__e2eGoogle = async () => (await (await fetch('/__test/idtoken', { method: 'POST', body: JSON.stringify({ email }) })).json()).idToken }, E(phone))
+  await p.goto(BASE + '#/login?role=' + role); await wait(x, 900)
+  await p.getByRole('button', { name: 'Continue with Google' }).click(); await wait(x, 2200)
   return x
 }
 const api = (x, route, opt = {}) => x.p.evaluate(async ([route, opt]) => { const q = opt.query ? '?' + new URLSearchParams(opt.query) : ''; const r = await fetch('/api/app/' + route + q, { method: opt.method || 'GET', headers: opt.body ? { 'Content-Type': 'application/json' } : {}, body: opt.body ? JSON.stringify(opt.body) : undefined }); return { status: r.status, body: await r.json().catch(() => null) } }, [route, opt])
@@ -26,8 +27,8 @@ check('security headers are sent (CSP, nosniff, frame, referrer, HSTS, permissio
 
 // setup: HOD adds teachers; students sign in, name themselves, join
 const hod = await person('HOD', '9100000001', 'hod')
-await api(hod, 'teachers', { method: 'POST', body: { phone: '9100000011', name: 'Prof A', code: 'PA' } }); await api(hod, 'teacher-division', { method: 'POST', body: { phone: '9100000011', division: 'D2A', subject: 'M1' } })
-await api(hod, 'teachers', { method: 'POST', body: { phone: '9100000012', name: 'Prof B', code: 'PB' } }); await api(hod, 'teacher-division', { method: 'POST', body: { phone: '9100000012', division: 'D2B', subject: 'M1' } })
+await api(hod, 'teachers', { method: 'POST', body: { email: E('9100000011'), name: 'Prof A', code: 'PA' } }); await api(hod, 'teacher-division', { method: 'POST', body: { email: E('9100000011'), division: 'D2A', subject: 'M1' } })
+await api(hod, 'teachers', { method: 'POST', body: { email: E('9100000012'), name: 'Prof B', code: 'PB' } }); await api(hod, 'teacher-division', { method: 'POST', body: { email: E('9100000012'), division: 'D2B', subject: 'M1' } })
 const s1 = await person('S1', '9100000101'), s2 = await person('S2', '9100000102')
 const ids = {}
 for (const [x, nm] of [[s1, 'Asha Test'], [s2, 'Ravi Test']]) {

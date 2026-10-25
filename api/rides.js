@@ -1,5 +1,5 @@
 const { neon } = require('@neondatabase/serverless');
-const { getPhone } = require('./_session');
+const { getIdentity: getPhone } = require('./_session'); // identity = verified Google email
 const sql = neon(process.env.DATABASE_URL);
 
 module.exports = async (req, res) => {

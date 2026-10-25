@@ -5,7 +5,7 @@
 // HOD draft attendance alerts and the branch HOD publishes them; the HOD publishes branch events. Parents only READ,
 // and only for students the college confirmed them for (parent_links.status = 'approved', checked on every request).
 module.exports = (H) => {
-  const { db, can, need, bad, forbidden, notFound, conflict, body, txt, isUuid, division, limit, branchOf, displayName, allowedDivisions, normalizePhone, mask } = H;
+  const { db, can, need, bad, forbidden, notFound, conflict, body, txt, isUuid, division, limit, branchOf, displayName, allowedDivisions, normalizeEmail, mask } = H;
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/, TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
   const RELATIONS = ['Mother', 'Father', 'Guardian', 'Parent'];
   const ymd = (d) => new Date(d).toISOString().slice(0, 10);
@@ -36,23 +36,26 @@ module.exports = (H) => {
     need(who, 'parent.link.request', { division: who.enrollment.division_code });
     await limit(`plink:${who.account.id}`, 10, 3600);
     const b = body(req);
-    const phone = normalizePhone(b.phone);
-    if (!phone) throw bad('INVALID_PHONE', 'Enter a 10-digit Indian mobile number.');
-    if (phone === who.phone) throw bad('OWN_NUMBER', 'Enter your parent\'s number, not yours.');
+    // The parent's Google account email (any provider). The class teacher or HOD confirms it before it gets access.
+    const phone = normalizeEmail(txt(b.email, 254));
+    if (!phone) throw bad('INVALID_EMAIL', 'Enter your parent’s Google account email, e.g. name@gmail.com.');
+    if (phone === who.phone) throw bad('OWN_EMAIL', 'Enter your parent’s email, not yours.');
     const staff = await db.q(`select 1 from hod_assignments where phone = $1 and active union all select 1 from teacher_whitelist where phone = $1 and active`, [phone]);
-    if (staff.length) throw bad('STAFF_NUMBER', 'That number belongs to college staff. Use a parent\'s personal number.');
+    if (staff.length) throw bad('STAFF_EMAIL', 'That account belongs to college staff. Use a parent’s own Google account.');
+    const student = await db.q(`select 1 from accounts a join class_enrollments e on e.student_id = a.id and e.status = 'active' where a.phone = $1 limit 1`, [phone]);
+    if (student.length) throw bad('STUDENT_EMAIL', 'That account belongs to a student. Use a parent’s own Google account.');
     const relation = RELATIONS.includes(b.relation) ? b.relation : 'Parent';
     const open = await db.q(`select parent_phone from parent_links where student_id = $1 and status in ('pending', 'approved')`, [who.account.id]);
-    if (open.some((r) => r.parent_phone === phone)) throw conflict('ALREADY_LINKED', 'This number is already added.');
+    if (open.some((r) => r.parent_phone === phone)) throw conflict('ALREADY_LINKED', 'This email is already added.');
     if (open.length >= 4) throw conflict('TOO_MANY', 'You can add up to 4 parents or guardians.');
     const [r] = await db.q(`insert into parent_links (parent_phone, student_id, relation) values ($1, $2, $3) returning id, status, requested_at`, [phone, who.account.id, relation]);
     await db.audit(who.account.id, 'parent.link.request', r.id, { relation }, branchOf(who, who.enrollment.division_code));
-    return { link: { ...r, phone: mask(phone), relation } };
+    return { link: { ...r, contact: mask(phone), relation } };
   }
   async function listLinks(who, req) {
     if (who.base === 'student') {
       const rows = await db.q(`select id, parent_phone, relation, status, requested_at, decided_at, note from parent_links where student_id = $1 and status <> 'revoked' order by requested_at desc limit 20`, [who.account.id]);
-      return { links: rows.map(({ parent_phone, ...r }) => ({ ...r, phone: mask(parent_phone) })) };
+      return { links: rows.map(({ parent_phone, ...r }) => ({ ...r, contact: mask(parent_phone) })) };
     }
     const divs = req.query.division ? [division(who, req.query.division)] : allowedDivisions(who, 'parent.link.decide');
     divs.forEach((d) => need(who, 'parent.link.decide', { division: d }));
@@ -63,7 +66,7 @@ module.exports = (H) => {
          join class_enrollments e on e.student_id = l.student_id and e.status = 'active' left join account_state s on s.account_id = a.id
         where e.division_code = any($1) and (l.status = 'pending' or l.decided_at > now() - interval '30 days')
         order by (l.status = 'pending') desc, l.requested_at desc limit 300`, [divs]);
-    return { links: rows.map(({ parent_phone, ...r }) => ({ ...r, phone: mask(parent_phone) })) };
+    return { links: rows.map(({ parent_phone, ...r }) => ({ ...r, contact: mask(parent_phone) })) };
   }
   async function decideLinks(who, req) {
     const b = body(req);

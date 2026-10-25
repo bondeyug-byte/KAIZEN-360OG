@@ -1,7 +1,7 @@
 // Canteen reviews shared through Neon (used by /reviews-sync.js).
 // GET: newest 500 reviews. POST: signed-in users only; a review can only be changed by the person who wrote it.
 const { neon } = require('@neondatabase/serverless');
-const { getPhone } = require('../_session');
+const { getIdentity: getPhone } = require('../_session'); // identity = verified Google email
 
 let sql = null, ready = null;
 const db = () => (sql = sql || neon(process.env.DATABASE_URL));

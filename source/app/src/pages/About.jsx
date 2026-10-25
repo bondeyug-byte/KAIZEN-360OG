@@ -51,7 +51,7 @@ const AUDIT = [
   ['Challenges & live leaderboard, peer credits & sessions, events', 'Pass'],
   ['Voice assistant: offline mode, confirmations, 4 languages', 'Pass'],
   ['Voice assistant: live Gemini / Claude / ChatGPT', 'Needs API key'],
-  ['Phone OTP sign-in (MiniMoth)', 'Needs API key'],
+  ['Google sign-in (Firebase Authentication)', 'Needs Firebase setup'],
   ['MCP server for Claude / ChatGPT', 'Needs deployment'],
 ]
 
@@ -91,7 +91,7 @@ export default function About() {
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-[12px] text-muted">Unit, server and browser tests run on every change; physical phones and live OTP delivery are tested separately.</p>
+          <p className="mt-3 text-[12px] text-muted">Unit, server and browser tests run on every change; physical phones and a live Google sign-in are tested separately.</p>
         </Card>
       </div>
       <Card>

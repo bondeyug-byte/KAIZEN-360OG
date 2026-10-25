@@ -28,7 +28,7 @@ const FEATURES = [
 
 /** Public landing page. Shows only public data: the campus model, timetabled trains and published events. */
 export default function Landing() {
-  const { db, now, signedIn, demoLogin } = useApp()
+  const { db, now, signedIn, demoLogin, demoEnabled } = useApp()
   const upcoming = useMemo(() => db.shared.events.filter((e) => eventStatus(e, now, EV) !== EVENT_STATUS.ENDED).sort((a, b) => Date.parse(a.start) - Date.parse(b.start)), [db.shared.events, now])
   const events = upcoming.slice(0, 3)
   const trains = useMemo(() => ['Chembur', 'Kurla'].map((s) => ({ s, list: nextTrains({ from: s, now, limit: 3 }).trains || [] })), [now])
@@ -49,7 +49,7 @@ export default function Landing() {
           <div className="mt-7 flex flex-wrap gap-3">
             <a href="#/navigator" className="press glass-btn inline-flex min-h-[52px] items-center gap-2.5 rounded-2xl px-6 text-[16px] font-semibold">Explore Campus <Icon name="chev" size={18} /></a>
             {!signedIn && <a href="#/login?role=student" className="press inline-flex min-h-[52px] items-center gap-2 rounded-2xl bg-lime px-6 text-[16px] font-bold text-lime-ink hover:brightness-95">Student Login</a>}
-            <button type="button" onClick={() => { demoLogin('u_aarav'); startTour(); window.location.hash = '/' }} className="press glass-btn inline-flex min-h-[52px] items-center gap-2.5 rounded-2xl px-6 text-[16px] font-semibold"><Icon name="spark" size={18} />Guided demo</button>
+            {demoEnabled && <button type="button" onClick={() => { demoLogin('u_aarav'); startTour(); window.location.hash = '/' }} className="press glass-btn inline-flex min-h-[52px] items-center gap-2.5 rounded-2xl px-6 text-[16px] font-semibold"><Icon name="spark" size={18} />Guided demo</button>}
           </div>
           {!signedIn && <div className="mt-8 grid max-w-[980px] gap-3 sm:grid-cols-2 lg:grid-cols-4" role="list" aria-label="Choose your portal">
             {[['student', 'Student', 'Your class, timetable, attendance, marks, notes, rides and peer tutors.', 'user'], ['teacher', 'Teacher', 'Record attendance, enter and publish marks, post to your classes.', 'book'], ['hod', 'HOD', 'Teachers, class reps, alerts, events and the audit log for your branch.', 'shield'], ['parent', 'Parent', "Your child's attendance, published marks, alerts, notices and events.", 'calendar']].map(([r, t, d, ic]) => (
@@ -58,8 +58,8 @@ export default function Landing() {
                 <span className="text-[13px] text-white/80">{d}</span>
               </a>))}
           </div>}
-          {!signedIn && <p className="mt-3 text-[12.5px] text-white/80"><a href="#/login?role=organiser" className="font-semibold underline underline-offset-2">Council or club event desk (demo)</a></p>}
-          {!signedIn && <p className="mt-3 text-[12px] text-white/70">Demo sign-in is simulated: roles are enforced inside the app only. A production deployment must check them on a server.</p>}
+          {!signedIn && demoEnabled && <p className="mt-3 text-[12.5px] text-white/80"><a href="#/login?role=organiser" className="font-semibold underline underline-offset-2">Council or club event desk (demo)</a></p>}
+          {!signedIn && <p className="mt-3 text-[12px] text-white/70">{demoEnabled ? 'Offline demo: sample accounts and data stay in this browser. The college site uses Google sign-in.' : 'Students, teachers and HODs sign in with their …@ves.ac.in Google account. Parents use the Google account their child added.'}</p>}
         </div>
       </section>
 

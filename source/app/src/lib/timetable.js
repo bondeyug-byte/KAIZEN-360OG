@@ -44,7 +44,7 @@ export const currentTimetable = () => state
 /** { entries, status: 'demo'|'loading'|'ok'|'empty'|'error'|'none', division, term, message } */
 export function useMyTimetable() {
   const { me, session } = useApp()
-  const cloud = session.mode === 'minimoth' && session.cloud
+  const cloud = session.mode === 'google' && session.cloud
   const key = cloud ? `${session.userId}:${session.enrollment?.division_code || ''}` : null // a confirmed division change refetches
   const snap = useSyncExternalStore((f) => { subs.add(f); return () => subs.delete(f) }, () => state)
   useEffect(() => {
@@ -55,7 +55,7 @@ export function useMyTimetable() {
     return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus) }
   }, [key])
   if (!cloud) {
-    if (session.mode === 'minimoth') return { entries: [], status: 'none', message: 'Connecting to the college server…' }
+    if (session.mode === 'google') return { entries: [], status: 'none', message: 'Connecting to the college server…' }
     const entries = me?.classId ? timetableForClass(me.classId) : []
     return { entries, status: 'demo', division: me?.classId || null, term: 'Sample timetable', message: entries.length ? '' : 'Set your class in your profile to see your lectures.' }
   }
