@@ -46,7 +46,7 @@ const sign = (phone) =>
   crypto.createHmac('sha256', process.env.MINIMOTH_API_KEY).update('phone:' + phone).digest('hex').slice(0, 32);
 const phoneCookie = (phone) => cookie(PHONE_COOKIE, `${encodeURIComponent(phone)}.${sign(phone)}`, '/api');
 const signEmail = (email) =>
-  crypto.createHmac('sha256', process.env.MINIMOTH_API_KEY).update('email:' + email).digest('hex').slice(0, 32);
+    crypto.createHmac('sha256', process.env.SESSION_SECRET || process.env.MINIMOTH_API_KEY || '').update('email:' + email).digest('hex').slice(0, 32);
 const emailCookie = (email) => cookie(GOOGLE_COOKIE, `${encodeURIComponent(email)}.${signEmail(email)}`, '/api');
 function readPhone(req) {
   const raw = readCookie(req, PHONE_COOKIE);
@@ -126,7 +126,7 @@ module.exports = async (req, res) => {
       return respond(res, 200, { ok: true, configured: !!key && !!mode, mode, teachersConfigured: !!String(process.env.TEACHER_PHONES || '').trim(), hodsConfigured: !!String(process.env.HOD_PHONES || '').trim(), databaseConfigured: !!process.env.DATABASE_URL });
     }
 
-    if (!key) {
+        if (!key && route !== 'google')  {
       console.error('MINIMOTH_API_KEY is not set.');
       return fail(res, 503, 'CONFIG_MISSING', 'MINIMOTH_API_KEY is not set.');
     }
