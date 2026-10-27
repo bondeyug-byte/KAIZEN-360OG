@@ -86,7 +86,37 @@ const sessionBody = async (email, name) => ({
   expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
   ...(await roleSummary(email)),
 });
-
+/* ---------- email one-time code (second step) ---------- */
+const OTP_COOKIE = 'g_otp';
+const OTP_TTL = 10 * 60; // seconds
+const otpMac = (email, exp, code) =>
+  crypto.createHmac('sha256', secret()).update(`otp:${email}:${exp}:${code}`).digest('hex').slice(0, 40);
+const otpCookie = (email, exp, code) =>
+  cookie(OTP_COOKIE, Buffer.from(JSON.stringify({ e: email, x: exp, m: otpMac(email, exp, code) })).toString('base64url'));
+const readOtp = (req) => {
+  try {
+    const raw = readCookie(req, OTP_COOKIE);
+    if (!raw) return null;
+    const { e, x, m } = JSON.parse(Buffer.from(raw, 'base64url').toString());
+    if (typeof e !== 'string' || typeof m !== 'string' || !Number.isFinite(x)) return null;
+    if (x < Math.floor(Date.now() / 1000)) return null;
+    return { email: e, exp: x, mac: m };
+  } catch (_) { return null; }
+};
+const maskEmail = (e) => e.replace(/^(.{2}).*(@.*)$/, '$1***$2');
+async function sendOtpEmail(email, code) {
+  const nodemailer = require('nodemailer');
+  const transport = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
+  });
+  await transport.sendMail({
+    from: `Campus360 <${process.env.GMAIL_USER}>`,
+    to: email,
+    subject: `Your Campus360 code: ${code}`,
+    text: `Your Campus360 verification code is ${code}.\n\nIt expires in 10 minutes. If you did not try to sign in, ignore this email.`,
+  });
+}
 /* ---------- handler ---------- */
 
 module.exports = async (req, res) => {
@@ -152,9 +182,39 @@ module.exports = async (req, res) => {
       if (!viaGoogle || !u.emailVerified || !email.endsWith(GOOGLE_DOMAIN)) {
         return fail(res, 403, 'WRONG_DOMAIN', 'Please use your @ves.ac.in account.');
       }
-      return respond(res, 200, await sessionBody(email, u.displayName), [sessionCookie(email)]);
+            // Second step: email a 6-digit code. The session starts only after the code is verified.
+      if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
+        console.error('GMAIL_USER or GMAIL_APP_PASSWORD is not set.');
+        return fail(res, 503, 'CONFIG_MISSING', 'Email verification is not configured on the server yet.');
+      }
+      if (!(await allowed(`otpsend:${email}`, 5, 600))) {
+        return fail(res, 429, 'OTP_RATE_LIMITED', 'Too many codes requested. Wait 10 minutes and try again.');
+      }
+      const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+      const exp = Math.floor(Date.now() / 1000) + OTP_TTL;
+      try { await sendOtpEmail(email, code); }
+      catch (e) {
+        console.error('Could not send OTP email:', e.message);
+        return fail(res, 502, 'EMAIL_FAILED', "We couldn't send the code. Try again in a moment.");
+      }
+      return respond(res, 200, { ok: true, otpRequired: true, email: maskEmail(email) }, [otpCookie(email, exp, code)]);
     }
-
+    // POST /otp { code }: second step, check the emailed code
+    if (route === 'otp') {
+      const code = String(body.code || '').trim();
+      if (!/^\d{6}$/.test(code)) return fail(res, 422, 'INVALID_OTP_CODE', 'The code must be 6 digits.');
+      const p = readOtp(req);
+      if (!p || !secret()) return fail(res, 401, 'OTP_NOT_FOUND', 'That code has expired.');
+      if (!(await allowed(`otpcheck:${p.email}`, 6, 600))) {
+        return fail(res, 429, 'VERIFY_RATE_LIMITED', 'Too many wrong attempts.');
+      }
+      const given = Buffer.from(otpMac(p.email, p.exp, code));
+      const want = Buffer.from(p.mac);
+      if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) {
+        return fail(res, 401, 'INVALID_OTP', "That code isn't right.");
+      }
+      return respond(res, 200, await sessionBody(p.email), [sessionCookie(p.email), expired(OTP_COOKIE)]);
+    }
     // POST /session: restore the login from the cookie (keeps people signed in after a refresh)
     if (route === 'session') {
       const email = readSession(req);

@@ -1,5 +1,8 @@
 {
   "name": "campus360",
   "private": true,
-  "dependencies": { "@neondatabase/serverless": "^0.10.0" }
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.0",
+    "nodemailer": "^10.2.1"
+  }
 }

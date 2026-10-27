@@ -37,9 +37,10 @@ const FRIENDLY = {
   REGION_NOT_ENABLED: 'Only Indian mobile numbers are enabled for sign-in.',
   INTERNATIONAL_WHATSAPP_FAILED: "We couldn't deliver the code on WhatsApp. Try again.",
   INTERNATIONAL_WHATSAPP_BLOCKED: 'This number is temporarily blocked after failed deliveries. Try later.',
-  FORBIDDEN_ORIGIN: 'Sign-in must be used from this site.',
-    WRONG_DOMAIN: 'Please sign in with your @ves.ac.in Google account.',
-  INVALID_GOOGLE_TOKEN: 'Google sign-in failed. Try again.',
+    OTP_NOT_FOUND: 'That code has expired. Sign in with Google again to get a new one.',
+  VERIFY_RATE_LIMITED: 'Too many wrong attempts. Sign in with Google again.',
+  OTP_RATE_LIMITED: 'Too many codes sent to this email. Wait 10 minutes and try again.',
+  EMAIL_FAILED: "We couldn't send the code. Try again in a moment.",
 }
 
 async function call(path, body, method = 'POST') {
@@ -96,3 +97,4 @@ export async function googleSignIn() {
     signOut(fbAuth).catch(() => {})
   }
 }
+export const verifyEmailCode = (code) => call('/otp', { code })
