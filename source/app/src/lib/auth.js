@@ -62,13 +62,13 @@ async function call(path, body, method = 'POST') {
 }
 
 export function normalizePhone(input) {
-  // Same rule as the server (api/_roles.js): +91, 91, a leading 0, spaces, dashes, brackets and dots all accepted.
+  const email = String(input || '').trim().toLowerCase()
+  if (/^[a-z0-9._%+-]+@ves\.ac\.in$/.test(email)) return email
   const raw = String(input || '').replace(/[\s\-().]/g, '')
   const d = raw.startsWith('+91') ? raw.slice(3) : /^91[6-9]\d{9}$/.test(raw) ? raw.slice(2) : /^0[6-9]\d{9}$/.test(raw) ? raw.slice(1) : raw
   return /^[6-9]\d{9}$/.test(d) ? `+91${d}` : null
 }
-export const maskPhone = (p) => (p && p.length >= 13 ? `${p.slice(0, 3)} ${p.slice(3, 5)}xxxx ${p.slice(-4)}` : p || '')
-
+export const maskPhone = (p) => (p && p.includes('@') ? p : p && p.length >= 13 ? `${p.slice(0, 3)} ${p.slice(3, 5)}xxxx ${p.slice(-4)}` : p || '')
 export async function serverAvailable() {
   try { const r = await call('/health', null, 'GET'); return { available: true, configured: !!r.configured, mode: r.mode || null } }
   catch (e) { return { available: false, configured: false, reason: e.message } }

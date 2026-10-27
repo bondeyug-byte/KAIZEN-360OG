@@ -12,7 +12,7 @@ function readCookie(req, name) {
 
 // Verified phone number from the signed login cookie, or null.
 function getPhone(req) {
-  const key = process.env.MINIMOTH_API_KEY;
+  const key = process.env.SESSION_SECRET || process.env.MINIMOTH_API_KEY;
   if (!key) return null;
   const raw = readCookie(req, 'mm_phone');
   if (!raw) return null;

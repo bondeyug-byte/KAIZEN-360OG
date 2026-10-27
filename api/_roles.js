@@ -1,8 +1,11 @@
 // Roles from server settings. Shared by api/auth.js and api/app.js; never sent to the browser as a list.
+const EMAIL_RE = /^[a-z0-9._%+-]+@ves\.ac\.in$/;
 function normalizePhone(input) {
   if (typeof input !== 'string') return null;
+  const email = input.trim().toLowerCase();
+  if (EMAIL_RE.test(email)) return email; // college Google accounts are identified by email
   const s = input.replace(/[\s\-().]/g, '');
-  if (/^0[6-9]\d{9}$/.test(s)) return `+91${s.slice(1)}`; // leading trunk 0
+  if (/^0[6-9]\d{9}$/.test(s)) return `+91${s.slice(1)}`;
   if (/^[6-9]\d{9}$/.test(s)) return `+91${s}`;
   if (/^91[6-9]\d{9}$/.test(s)) return `+${s}`;
   if (/^\+91[6-9]\d{9}$/.test(s)) return s;
