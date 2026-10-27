@@ -6,6 +6,7 @@
 //   hodBranches    branches this HOD heads (from HOD_PHONES → hod_assignments)
 //   teacher        { divisions: [codes], canPublishTimetable } for active whitelisted teachers
 //   crDivisions    divisions where this student is an active class representative
+//   siDivisions / ciDivisions   divisions where this student is the sports / cultural incharge
 //   enrollment     { division_code, year_id } — the student's active class, or null
 //   divisions      Map(code → { code, branch_code, year_id })
 //
@@ -24,6 +25,9 @@ function can(who, action, res = {}) {
   const teaches = (code) => isTeacher && who.teacher.divisions.includes(code);
   const enrolledIn = (code) => isStudent && !!who.enrollment && who.enrollment.division_code === code;
   const crOf = (code) => enrolledIn(code) && who.crDivisions.includes(code); // a CR must still be in the class
+  const siOf = (code) => enrolledIn(code) && (who.siDivisions || []).includes(code); // sports incharge of their own class
+  const ciOf = (code) => enrolledIn(code) && (who.ciDivisions || []).includes(code); // cultural incharge of their own class
+  const staff = hodOf(branch) || teaches(d && d.code);
 
   switch (action) {
     // joining a class
@@ -66,6 +70,21 @@ function can(who, action, res = {}) {
     case 'alert.publish':
     case 'event.manage':
     case 'settings.manage': return hodOf(branch);
+    // portal upgrade (migration 7). Roles never overlap implicitly: a CR who is not also SI cannot post sports updates.
+    case 'publish.academic': return staff; // assignments, notices, CA/tutorial/exam dates, study material, announcements
+    case 'publish.sports': return staff || siOf(d && d.code);
+    case 'publish.cultural': return staff || ciOf(d && d.code);
+    case 'submission.create': return enrolledIn(d && d.code);
+    case 'submission.view': return staff;
+    case 'calendar.view': return staff || enrolledIn(d && d.code);
+    case 'role.request': return enrolledIn(d && d.code);
+    case 'role.decide':
+    case 'role.assign':
+    case 'role.remove': return staff; // class teacher (assigned classes) or the branch HOD
+    case 'branch.view':
+    case 'division.provision':
+    case 'syllabus.manage': return hodOf(branch);
+    case 'club.provision': return isHod; // an HOD appoints club/council heads
     default: return false;
   }
 }

@@ -24,6 +24,9 @@ import AttendancePage from './pages/Attendance.jsx'
 import Canteen from './pages/Canteen.jsx'
 import Notes from './pages/Notes.jsx'
 import Admin from './pages/Admin.jsx'
+import Setup, { skipKey } from './pages/Setup.jsx'
+import Clubs from './pages/Clubs.jsx'
+import { prefs } from './lib/storage.js'
 import Landing from './pages/Landing.jsx'
 import { Privacy, Terms } from './pages/Legal.jsx'
 import Tour from './components/Tour.jsx'
@@ -55,20 +58,20 @@ export default function App() {
     return () => window.removeEventListener('hashchange', on)
   }, [])
 
-  // Freshly verified students with an empty profile go to onboarding first.
+  // First sign-in: "Set Up Your Profile" comes before anything else (students, teachers, HODs on the college
+  // server), then a student picks their division. Demo students keep the browser-only onboarding.
   useEffect(() => {
-    if (!signedIn || !me || me.demo || !isStudent(me) || loc.path === '/profile' || loc.path === '/portal') return
-    // Google sign-in: wait until the college account has loaded (session.cloud). Until then `me` is a bare local
-    // profile, and judging it by the demo rules sent every reload to onboarding (audit 2026-10 fix).
-    if (session.mode === 'google' && !session.cloud) return
-    if (session.cloud) {
-      // Phone accounts: a name first, then "Join your class" until a class is approved or requested.
-      if (!me.name?.trim()) go('/profile?onboard=1')
-      else if (loc.path === '/' && !session.enrollment && session.joinRequest?.status !== 'pending') go('/portal?tab=class')
+    if (!signedIn || !me || me.demo) return
+    if (session.mode === 'google') {
+      if (!session.cloud || me.role === 'parent') return // wait for the college account (audit 2026-10 fix)
+      if (['/setup', '/privacy', '/terms'].includes(loc.path)) return
+      if (session.setupDone === false) { go('/setup'); return }
+      if (isStudent(me) && loc.path === '/' && !session.enrollment && session.joinRequest?.status !== 'pending' && !prefs.get(skipKey(session.userId), false)) go('/setup')
       return
     }
+    if (!isStudent(me) || loc.path === '/profile' || loc.path === '/portal') return
     if (!hasAcademicIdentity(me) || profileCompletion(me).pct < 60) go('/profile?onboard=1')
-  }, [signedIn, me, loc.path, session.mode, session.cloud, session.enrollment, session.joinRequest])
+  }, [signedIn, me, loc.path, session.mode, session.cloud, session.setupDone, session.enrollment, session.joinRequest, session.userId])
 
   if (session.status === 'loading') return <div className="grid min-h-screen place-items-center"><Spinner label="Starting Campus360…" /></div>
 
@@ -81,7 +84,7 @@ export default function App() {
 
   const pages = {
     '/': me?.role === 'parent' ? <ParentPortal query={loc.query} /> : me?.role === 'hod' ? <Hod query={loc.query} /> : me?.role === 'organiser' ? <Organiser query={loc.query} /> : me?.role === 'teacher' ? <TeacherPortal query={loc.query} /> : me?.role === 'admin' ? <Admin /> : <Dashboard query={loc.query} />,
-    '/teacher': <TeacherPortal query={loc.query} />, '/portal': <Portal query={loc.query} />, '/hod': <Hod query={loc.query} />, '/parent': <ParentPortal query={loc.query} />, '/classwork': <Classwork query={loc.query} />, '/attendance': <AttendancePage />, '/canteen': <Canteen query={loc.query} />, '/notes': <Notes query={loc.query} />, '/admin': <Admin />, '/organiser': <Organiser query={loc.query} />, '/notifications': <NotificationsPage />, '/planner': <Planner query={loc.query} />, '/rides': <Rides query={loc.query} />, '/challenges': <Challenges query={loc.query} />, '/directory': <Directory />,
+    '/teacher': <TeacherPortal query={loc.query} />, '/portal': <Portal query={loc.query} />, '/hod': <Hod query={loc.query} />, '/parent': <ParentPortal query={loc.query} />, '/classwork': <Classwork query={loc.query} />, '/attendance': <AttendancePage />, '/canteen': <Canteen query={loc.query} />, '/notes': <Notes query={loc.query} />, '/admin': <Admin />, '/organiser': <Organiser query={loc.query} />, '/setup': <Setup query={loc.query} />, '/clubs': <Clubs />, '/notifications': <NotificationsPage />, '/planner': <Planner query={loc.query} />, '/rides': <Rides query={loc.query} />, '/challenges': <Challenges query={loc.query} />, '/directory': <Directory />,
     '/events': <Events query={loc.query} />, '/peer': <Peer query={loc.query} />, '/profile': <Profile query={loc.query} />, '/navigator': <Suspense fallback={<div className="grid min-h-[60vh] place-items-center"><Spinner label="Loading the 3D campus" /></div>}><NavigatorPage query={loc.query} /></Suspense>, '/commute': <Commute query={loc.query} />, '/about': <About />, '/privacy': <Privacy />, '/terms': <Terms />,
   }
   // Route-level permission: a page outside this role's portal is never rendered, whatever the URL says.

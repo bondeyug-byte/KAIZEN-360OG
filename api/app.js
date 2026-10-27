@@ -8,6 +8,7 @@ const { can, allowedDivisions } = require('./_policy');
 const tt = require('./_timetable');
 const db = require('./_db');
 const records = require('./_records');
+const portalModule = require('./_portal');
 
 const MAX_PROFILE = 8 * 1024, MAX_DATA = 200 * 1024, MAX_FILE = 3 * 1024 * 1024, PAGE = 50;
 const PROTECTED = ['id', 'role', 'roles', 'teaches', 'phone', 'phoneVerified', 'authMethod', 'demo', 'classRep', 'academicHistory', 'admin', 'teacher', 'hod'];
@@ -18,7 +19,9 @@ const FILE_TYPES = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
 };
 const TERM_RE = /^[A-Za-z0-9 _.-]{2,40}$/;
-const SENT = Symbol('sent'); // a handler already wrote the response (file download)
+const SENT = Symbol('sent');
+// What students and parents may see of a post: published or cancelled, and past its scheduled publish time.
+const VISIBLE_POSTS = `p.deleted_at is null and p.status in ('published', 'cancelled') and (p.publish_at is null or p.publish_at <= now())`; // a handler already wrote the response (file download)
 
 class HttpError extends Error { constructor(status, code, message, extra) { super(message); this.status = status; this.code = code; this.extra = extra; } }
 const bad = (code, message, extra) => new HttpError(400, code, message, extra);
@@ -49,7 +52,7 @@ async function getMe(who) {
   await db.q('insert into account_state (account_id) values ($1) on conflict (account_id) do nothing', [who.account.id]);
   const [state] = await db.q('select profile, data, version, updated_at from account_state where account_id = $1', [who.account.id]);
   const [joinRequest] = await db.q(`select id, division_code, status, kind, from_division, reason, note, created_at, decided_at from join_requests where student_id = $1 order by created_at desc limit 1`, [who.account.id]);
-  const [crRequest] = await db.q(`select id, division_code, status, note, created_at from cr_requests where student_id = $1 order by created_at desc limit 1`, [who.account.id]);
+  const [crRequest] = await db.q(`select id, division_code, status, role, note, created_at from cr_requests where student_id = $1 order by created_at desc limit 1`, [who.account.id]);
   const reviewDivs = allowedDivisions(who, 'join.decide');
   const [{ n: pendingJoins }] = reviewDivs.length ? await db.q(`select count(*)::int as n from join_requests where status = 'pending' and division_code = any($1) and student_id <> $2`, [reviewDivs, who.account.id]) : [{ n: 0 }];
   const crDivs = allowedDivisions(who, 'cr.decide');
@@ -62,6 +65,7 @@ async function getMe(who) {
     cr: who.crDivisions.filter((d) => who.enrollment && who.enrollment.division_code === d),
     enrollment: who.enrollment, joinRequest: joinRequest || null, crRequest: crRequest || null,
     counts: { pendingJoins, pendingCr, openInstructions }, admin: false,
+    ...(await portal.meExtras(who)),
   };
 }
 async function putMe(who, req) {
@@ -188,6 +192,10 @@ async function decideJoins(who, req) {
            update cr_assignments c set active = false, removed_by = $2, removed_at = now()
              from r where c.student_id = r.student_id and c.division_code = r.from_division and c.active
            returning c.student_id),
+         cls as (
+           update class_roles c set active = false, removed_by = $2, removed_at = now()
+             from r where c.student_id = r.student_id and c.division_code = r.from_division and c.active
+           returning c.student_id),
          crq as (
            update cr_requests q set status = 'cancelled', decided_at = now(), note = 'Moved to another division'
              from r where q.student_id = r.student_id and q.division_code = r.from_division and q.status = 'pending'
@@ -230,6 +238,7 @@ async function revokeEnrollment(who, req) {
   const rows = await db.q(`update class_enrollments set status = 'archived', archived_by = $3, archived_at = now() where student_id = $1 and division_code = $2 and status = 'active' returning student_id`, [b.studentId, div, who.account.id]);
   if (!rows.length) throw notFound('That student is not in this class.');
   await db.q(`update cr_assignments set active = false, removed_by = $3, removed_at = now() where student_id = $1 and division_code = $2 and active`, [b.studentId, div, who.account.id]);
+  await db.q(`update class_roles set active = false, removed_by = $3, removed_at = now() where student_id = $1 and division_code = $2 and active`, [b.studentId, div, who.account.id]);
   await db.audit(who.account.id, 'enrollment.revoke', b.studentId, { division: div, note: txt(b.note, 200) }, branchOf(who, div));
   return { revoked: true };
 }
@@ -271,7 +280,7 @@ async function listCr(who, req) {
   if (!scope.length) throw forbidden('Only teachers and HODs review class-representative requests.');
   const history = req.query.status === 'decided';
   const rows = await db.q(
-    `select c.id, c.student_id, c.division_code, c.status, c.note, c.created_at, c.decided_at, a.name, s.profile->>'roll' as roll, dec.name as decided_by_name
+    `select c.id, c.student_id, c.division_code, c.status, c.role, c.note, c.created_at, c.decided_at, a.name, s.profile->>'roll' as roll, dec.name as decided_by_name
        from cr_requests c join accounts a on a.id = c.student_id left join account_state s on s.account_id = c.student_id left join accounts dec on dec.id = c.decided_by
       where c.division_code = any($1) and ${history ? `c.status in ('approved', 'rejected')` : `c.status = 'pending'`}
       order by c.created_at desc limit ${PAGE + 1} offset $2`, [scope, page(req) * PAGE]);
@@ -281,9 +290,10 @@ async function decideCr(who, req) {
   const b = body(req);
   const decision = b.decision === 'approve' ? 'approved' : b.decision === 'reject' ? 'rejected' : null;
   if (!decision || !isUuid(b.id)) throw bad('INVALID', 'Choose a request and approve or reject.');
-  const [r] = await db.q('select id, student_id, division_code, status from cr_requests where id = $1', [b.id]);
+  const [r] = await db.q('select id, student_id, division_code, status, role from cr_requests where id = $1', [b.id]);
   if (!r) throw notFound('Request not found.');
   need(who, 'cr.decide', { division: r.division_code }, `You can't decide class-rep requests for ${r.division_code}.`);
+  if (r.role !== 'cr') throw conflict('USE_CLASS_ROLES', 'Sports and cultural incharge requests are decided under Class roles.');
   const note = txt(b.note, 300);
   if (decision === 'rejected') {
     const rows = await db.q(`update cr_requests set status = 'rejected', decided_by = $2, decided_at = now(), note = $3 where id = $1 and status = 'pending' returning id`, [b.id, who.account.id, note]);
@@ -489,7 +499,7 @@ async function createPost(who, req) {
   for (const br of [...new Set(targets.map((d) => branchOf(who, d)))]) await db.audit(who.account.id, 'post.create', row.id, { kind, divisions: targets.filter((d) => branchOf(who, d) === br), by: authorRole, file: file ? { name: file.name, size: file.bytes.length } : null }, br);
   return { post: { id: row.id, createdAt: row.created_at, divisions: targets, kind, title } };
 }
-const POST_COLS = `p.id, p.kind, p.title, p.body, p.author_name, p.author_role, p.created_at,
+const POST_COLS = `p.id, p.kind, p.title, p.body, p.author_name, p.author_role, p.created_at, p.status, p.subject, p.due_at, to_char(p.event_date, 'YYYY-MM-DD') as event_date, p.publish_at,
   f.id as file_id, f.name as file_name, f.mime as file_mime, f.size as file_size,
   (select array_agg(division_code order by division_code) from post_targets where post_id = p.id) as divisions`;
 async function myPosts(who, req) {
@@ -521,7 +531,7 @@ async function feed(who, req) {
   if (!div) return { division: null, posts: [], message: who.base === 'student' ? 'Join a class to see posts from your teachers.' : 'Choose a division.' };
   const before = req.query.before && !Number.isNaN(Date.parse(req.query.before)) ? req.query.before : null;
   const rows = await db.q(`select ${POST_COLS} from post_targets t join posts p on p.id = t.post_id left join files f on f.id = p.file_id
-    where t.division_code = $1 and p.deleted_at is null and ($2::timestamptz is null or p.created_at < $2)
+    where t.division_code = $1 and ${VISIBLE_POSTS} and ($2::timestamptz is null or p.created_at < $2)
     order by p.created_at desc limit ${PAGE}`, [div, before]);
   return { division: div, posts: rows, more: rows.length === PAGE };
 }
@@ -557,13 +567,18 @@ async function getFile(who, req, res) {
   const id = req.query.id;
   if (!isUuid(id)) throw bad('INVALID_ID', 'Unknown file.');
   const viewable = [...who.divisions.keys()].filter((d) => can(who, 'content.view', { division: d }));
+  const staffDivs = allowedDivisions(who, 'submission.view'); // a student's hand-in: the student and their class teachers/HOD only
   const [f] = await db.q(
     `select f.name, f.mime, encode(f.bytes, 'base64') as b64 from files f where f.id = $1 and (
-       f.owner_id = $2 or exists (select 1 from posts p join post_targets t on t.post_id = p.id
-          where p.file_id = f.id and p.deleted_at is null and t.division_code = any($3)))`, [id, who.account.id, viewable]);
+       f.owner_id = $2
+       or exists (select 1 from posts p join post_targets t on t.post_id = p.id where p.file_id = f.id and ${VISIBLE_POSTS} and t.division_code = any($3))
+       or exists (select 1 from assignment_submissions s where s.file_id = f.id and s.division_code = any($4::text[]))
+       or exists (select 1 from college_events e where e.poster_file_id = f.id and e.status in ('published', 'cancelled'))
+       or exists (select 1 from college_events e join club_members m on m.club_id = e.club_id where e.poster_file_id = f.id and m.email = $5 and m.status = 'active'))`, [id, who.account.id, viewable, staffDivs, who.phone]);
   if (!f) throw notFound('File not found, or it was not shared with your class.');
+  const inline = req.query.inline === '1' && ['image/png', 'image/jpeg'].includes(f.mime); // posters are shown in the page
   res.setHeader('Content-Type', f.mime);
-  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(f.name)}"`);
+  res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(f.name)}"`);
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.status(200);
@@ -668,6 +683,7 @@ async function timetable(who, req) {
 }
 
 /* ============================== router ============================== */
+const portal = portalModule({ db, can, need, bad, forbidden, notFound, conflict, body, txt, isUuid, division, limit, branchOf, displayName, allowedDivisions, normalizeEmail, isInstitutional, mask, HttpError, FILE_TYPES, MAX_FILE, PAGE, setting, INSTITUTION_DOMAIN });
 const ROUTES = {
   'GET me': getMe, 'PUT me': putMe, 'GET catalog': catalog, 'GET divisions': async (w) => ({ divisions: (await catalog(w)).divisions }),
   'POST join-requests': joinRequest, 'DELETE join-requests': cancelJoin, 'GET join-requests': listJoins, 'POST join-decision': decideJoins,
@@ -681,7 +697,9 @@ const ROUTES = {
   'POST timetable-preview': ttPreview, 'POST timetable-publish': ttPublish, 'POST timetable-rollback': ttRollback,
   'GET timetable-versions': ttVersions, 'GET timetable': timetable,
   // parent portal, attendance, marks, alerts, events (api/_records.js)
-  ...records({ db, can, need, bad, forbidden, notFound, conflict, body, txt, isUuid, division, limit, branchOf, displayName, allowedDivisions, normalizeEmail, isInstitutional, mask }),
+  ...records({ db, can, need, bad, forbidden, notFound, conflict, body, txt, isUuid, division, limit, branchOf, displayName, allowedDivisions, normalizeEmail, isInstitutional, mask, VISIBLE_POSTS }),
+  // profile set-up, publishing, hand-in, calendar, class roles, HOD branch view, clubs (api/_portal.js)
+  ...portal.routes,
 };
 
 module.exports = async (req, res) => {

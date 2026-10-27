@@ -25,6 +25,8 @@ Phone OTP (MiniMoth) has been removed from the code.
 - Parents see only the student(s) confirmed for their account, read-only. Teachers and class reps see parent
   emails masked (`pa•••@gmail.com`). If a parent changes Google account, the student removes the old one and adds
   the new one, and the teacher confirms it again; access is never moved because a name or number matches.
+- After the first sign-in, students, teachers and HODs complete "Set up your profile" before anything else
+  (see `docs/PORTAL-UPGRADE.md`). It never grants a role.
 - Sessions: an HttpOnly, Secure, SameSite=Strict cookie signed with `SESSION_SECRET`, valid 7 days. Signing out ends
   the session on every device. No Google or Firebase token is kept in the page.
 

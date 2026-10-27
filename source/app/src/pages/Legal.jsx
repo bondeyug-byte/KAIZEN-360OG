@@ -23,7 +23,9 @@ export function Privacy() {
         <H>What we collect and why</H>
         <L items={[
           'Your Google account email address and name, shared by Google when you choose “Continue with Google”, to sign you in and to recognise your role (student, teacher, HOD or parent). Campus360 asks Google for nothing else (no Gmail, Drive or contacts).',
-          'Your name, and optionally your roll number and other profile fields you choose to add, so teachers can recognise you.',
+          'The profile you set up at first sign-in: your name, mobile number, roll number, academic year and branch, and your gender (“Prefer not to say” is an option). Teachers and HODs use these to recognise you; class representatives and club organisers never see your mobile number or gender. Your role and class are never taken from this profile.',
+          'Assignments you hand in (your note and file), seen only by you and the teachers and HOD of your class.',
+          'Club and council membership (by college email, with the permissions the club head gives you) and event registrations. Organisers see the names and masked emails of people who registered for their event, never academic records.',
           'Your class (division) and requests to join or change it, so you see your own timetable and class posts.',
           'Attendance and marks that your teachers record and publish, and attendance alerts your HOD publishes.',
           'Parent or guardian Google account emails that a student adds, which the class teacher must confirm before a parent can see anything.',
@@ -35,7 +37,7 @@ export function Privacy() {
         <H>Who can see what</H>
         <L items={[
           'Students see their own attendance and marks only, and posts for their own division.',
-          'Teachers see the classes assigned to them. HODs see their branch. Class representatives can approve new students joining their class but never see contact details or the reason for a change of division.',
+          'Teachers see the classes assigned to them. HODs see their branch. Class representatives can approve new students joining their class but never see contact details or the reason for a change of division. Sports and cultural incharges can post updates to their own class only.',
           'A parent sees only the student who added them, and only after the class teacher or HOD confirms the link.',
           'These checks run on the server for every request.',
         ]} />

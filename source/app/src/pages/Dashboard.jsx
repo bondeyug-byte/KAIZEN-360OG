@@ -1,7 +1,8 @@
-// Student Overview: a working view of the day, in this order: today's timetable, work due, academic progress,
-// upcoming events, the student's own study list, notices, quick actions. Every number comes from a saved record
-// (lib/overview.js, lib/record.js); nothing is a score or a decorative counter.
-import { useEffect, useMemo, useState } from 'react'
+// Student Overview (ADHD-friendly: one column of clearly titled blocks, the same order every day):
+// 1 syllabus banner · 2 today's timetable with 3 assignments beside it · 4 academic calendar · 5 important dates ·
+// 6 attendance · 7 events · 8 notices and quick actions (then the personal study planner).
+// Every number comes from a saved record (lib/overview.js, lib/record.js, the server calendar); nothing is invented.
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useApp, profileCompletion } from '../store/AppContext.jsx'
 import { Card, CardTitle, Badge, Button, Empty, Spinner, relTime, cx, Dialog, Field, inputCls } from '../components/ui.jsx'
 import { uid } from '../lib/ids.js'
@@ -15,6 +16,10 @@ import { checkTarget, RESULT } from '../lib/academic.js'
 import { place, floorName } from '../navigator/building.js'
 import { prefs } from '../lib/storage.js'
 import { CLASS_LABEL, CAMPUS_TIMEZONE } from '../data/config.js'
+import { api } from '../lib/portal.js'
+import { useLoad } from '../components/CloudPortal.jsx'
+import { SyllabusBanner, AssignmentsCard, AcademicCalendar, ImportantDates, EventDialog, useCalendar } from '../components/Academic.jsx'
+import { ymdToday, monthGrid, demoItems, addDays } from '../lib/calendar.js'
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const toMin = (s) => { const [h, m] = s.split(':').map(Number); return h * 60 + m }
@@ -45,32 +50,45 @@ export function nextClass(tt, now) {
   return null
 }
 
-const SECTIONS = [['tasks', 'Tasks and assignments'], ['progress', 'Academic progress'], ['events', 'Upcoming events'], ['study', 'Study planner'], ['notices', 'Important notices'], ['actions', 'Quick actions']]
+const SECTIONS = [['calendar', 'Academic calendar'], ['dates', 'Important academic dates'], ['progress', 'Attendance and marks'], ['events', 'College events'], ['notices', 'Notices'], ['actions', 'Quick actions'], ['study', 'Study planner (personal)']]
 const fmtDate = (iso, o) => new Intl.DateTimeFormat('en-IN', { timeZone: CAMPUS_TIMEZONE, ...o }).format(new Date(iso))
 const DUE_BADGE = { overdue: ['Overdue', 'bad'], soon: ['Due soon', 'warn'] }
 const Link = ({ href, children }) => <a href={href} className="text-[13px] font-semibold text-maroon underline-offset-2 hover:underline">{children}</a>
 
 export default function Dashboard({ query = {} }) {
   const { db, me, myData, now, session, updateMyData, pushToast } = useApp()
-  const live = session.mode === 'google' // phone account: sample records are never presented as real
+  const live = session.mode === 'google' // college account: sample records are never presented as real
+  const cloud = live && !!session.cloud
   const my = useMyTimetable()
   const att = useStudentAttendance()
   const [hidden, setHiddenState] = useState(() => prefs.get('overviewHidden', []))
   const [customize, setCustomize] = useState(false)
   const [editDl, setEditDl] = useState(null)
+  const [eventId, setEventId] = useState(null)
+  const closeEvent = useCallback(() => setEventId(null), [])
   const setHidden = (h) => { setHiddenState(h); prefs.set('overviewHidden', h) }
   useEffect(() => { if (!query.dl) return; const t = setTimeout(() => { const el = document.getElementById('dl-' + query.dl); if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('flash') } }, 150); return () => clearTimeout(t) }, [query.dl])
 
   const sh = db.shared
   const record = att.record
+  const today = ymdToday(now)
+  const ov = useLoad(() => (cloud ? api('overview') : Promise.resolve(null)), [cloud, session.enrollment?.division_code])
+  const [range, setRange] = useState(() => { const g = monthGrid(today); return [g[0].date, g[41].date] })
+  const cal = useCalendar(cloud, range[0], range[1])
+  const soon = useCalendar(cloud, today, addDays(today, 45))
   const tasks = useMemo(() => collegeTasks({ shared: sh, me, now, live, reminders: record?.reminders || [] }), [sh, me, now, live, record])
   const mine = useMemo(() => personalTasks(myData?.deadlines, now), [myData?.deadlines, now])
   const events = useMemo(() => upcomingEvents({ shared: sh, me, now, live, college: record?.events || [] }), [sh, me, now, live, record])
-  const notices = useMemo(() => importantNotices({ shared: sh, me, now, live, record, notifications: notificationsFor(sh, session.userId) }), [sh, me, now, live, record, session.userId])
+  const notices = useMemo(() => {
+    const club = (ov.data?.announcements || []).map((a) => ({ id: `ca_${a.id}`, kind: a.club_name || 'Club', tone: 'info', title: a.title, body: a.body, at: a.created_at, eventId: a.event_id }))
+    return [...club, ...importantNotices({ shared: sh, me, now, live, record, notifications: notificationsFor(sh, session.userId) })].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+  }, [sh, me, now, live, record, session.userId, ov.data])
+  const demoCal = useMemo(() => (cloud ? [] : demoItems({ tasks, events })), [cloud, tasks, events])
   const comp = profileCompletion(me)
   const show = (k) => !hidden.includes(k)
   const division = session.enrollment?.division_code || me.division
   const saveDl = (x) => { updateMyData((u) => ({ ...u, deadlines: x.id ? u.deadlines.map((y) => (y.id === x.id ? { ...y, ...x } : y)) : [...(u.deadlines || []), { ...x, id: uid('dl'), done: false }] })); pushToast(x.id ? 'Task updated.' : 'Task added.'); setEditDl(null) }
+  const branch = ov.data?.branch || null
 
   return (
     <div className="flex flex-col gap-4">
@@ -82,21 +100,25 @@ export default function Dashboard({ query = {} }) {
         <Button size="sm" variant="secondary" onClick={() => setCustomize(true)}>Customise</Button>
       </header>
 
-      {comp.pct < 100 && <p className="rounded-lg border border-line bg-surface px-3 py-2 text-[13.5px]">Your profile is {comp.pct}% complete. <a href="#/profile" className="font-semibold text-maroon underline">Add your {comp.missing.join(', ')}</a>.</p>}
-      {live && session.enrollment == null && <p className="rounded-lg border border-[#EBDDB9] bg-[#FDF8EC] px-3 py-2 text-[13.5px]">You haven’t joined a class yet, so there is no timetable, attendance or class work to show. <a href="#/portal?tab=class" className="font-semibold text-maroon underline">Join your class</a></p>}
+      {!live && comp.pct < 100 && <p className="rounded-lg border border-line bg-surface px-3 py-2 text-[13.5px]">Your profile is {comp.pct}% complete. <a href="#/profile" className="font-semibold text-maroon underline">Add your {comp.missing.join(', ')}</a>.</p>}
+      {live && session.enrollment == null && <p className="rounded-lg border border-[#EBDDB9] bg-[#FDF8EC] px-3 py-2 text-[13.5px]">{session.joinRequest?.status === 'pending' ? `Your request to join ${session.joinRequest.division_code} is waiting for your teacher. Class timetable, attendance and work appear once it’s approved.` : 'You haven’t joined a class yet, so there is no timetable, attendance or class work to show.'} <a href="#/setup" className="font-semibold text-maroon underline">{session.joinRequest?.status === 'pending' ? 'View request' : 'Choose your division'}</a></p>}
+
+      <SyllabusBanner syllabus={ov.data?.syllabus} branch={branch} live={live} loading={cloud && ov.loading} />
 
       <div data-tour="overview" className="grid gap-4 lg:grid-cols-2">
         <TodaySection my={my} now={now} />
-        {show('tasks') && <TasksSection tasks={tasks} live={live} now={now} />}
+        <AssignmentsCard live={cloud} items={ov.data?.assignments} loading={ov.loading} error={ov.error} demoTasks={tasks} now={now} onChanged={ov.reload} />
+        {show('calendar') && <AcademicCalendar items={cloud ? cal.items : demoCal} status={cloud ? cal.status : 'ready'} message={cal.message} empty={cal.empty} today={today} demo={!cloud} onRange={(a, b) => setRange([a, b])} onOpenEvent={cloud ? setEventId : undefined} />}
+        {show('dates') && <ImportantDates items={cloud ? soon.items : demoCal} status={cloud ? soon.status : 'ready'} today={today} demo={!cloud} onOpenEvent={cloud ? setEventId : undefined} />}
         {show('progress') && <ProgressSection att={att} myData={myData} live={live} />}
-        {show('events') && <EventsSection events={events} now={now} />}
+        {show('events') && <EventsSection events={events} now={now} onOpen={cloud ? setEventId : undefined} />}
+        {show('notices') && <NoticesSection notices={notices} now={now} onOpenEvent={cloud ? setEventId : undefined} />}
+        {show('actions') && <QuickActions live={live} now={now} syllabus={ov.data?.syllabus?.url} />}
         {show('study') && <StudySection items={mine} myData={myData} now={now} onAdd={() => setEditDl({})} onEdit={setEditDl} onDone={(d) => updateMyData((u) => ({ ...u, deadlines: u.deadlines.map((x) => (x.id === d.id ? { ...x, done: true } : x)) }))} />}
-        {show('notices') && <NoticesSection notices={notices} now={now} />}
-        {show('actions') && <QuickActions live={live} now={now} />}
       </div>
 
       <Dialog open={customize} onClose={() => setCustomize(false)} title="Customise your overview">
-        <fieldset className="flex flex-col gap-2"><legend className="mb-1 text-[13px] text-muted">Today’s timetable always stays at the top. Choose what else to show (saved in this browser).</legend>
+        <fieldset className="flex flex-col gap-2"><legend className="mb-1 text-[13px] text-muted">The syllabus banner, today’s timetable and assignments always stay at the top. Choose what else to show (saved in this browser).</legend>
           {SECTIONS.map(([k, l]) => <label key={k} className="flex min-h-[40px] items-center gap-3 text-[14px]"><input type="checkbox" className="h-[18px] w-[18px]" checked={show(k)} onChange={(e) => setHidden(e.target.checked ? hidden.filter((x) => x !== k) : [...hidden, k])} />{l}</label>)}
         </fieldset>
         <div className="mt-4 flex justify-end gap-2"><Button variant="ghost" onClick={() => setHidden([])}>Show all</Button><Button onClick={() => setCustomize(false)}>Done</Button></div>
@@ -104,6 +126,7 @@ export default function Dashboard({ query = {} }) {
       <Dialog open={!!editDl} onClose={() => setEditDl(null)} title={editDl?.id ? 'Edit task' : 'Add a study task'}>
         {editDl && <DeadlineForm d={editDl} onCancel={() => setEditDl(null)} onSave={saveDl} />}
       </Dialog>
+      {eventId && <EventDialog id={eventId} onClose={closeEvent} />}
       {session.mode === 'demo' && <p className="text-center text-xs text-muted">Demo account: records marked “Sample” are fictional.</p>}
     </div>
   )
@@ -128,7 +151,7 @@ function TodaySection({ my, now }) {
   }
   const full = my.status === 'demo' ? null : '#/portal?tab=tt'
   return (
-    <Card className="lg:col-span-2">
+    <Card>
       <CardTitle eyebrow={label ? `${label}${my.term && my.status !== 'demo' ? ` · ${my.term}` : ''}` : undefined} action={full ? <Link href={full}>Full timetable</Link> : <Link href="#/navigator">3D campus</Link>}>Today’s timetable</CardTitle>
       {my.status === 'loading' ? <Spinner label="Loading your timetable" />
         : my.status === 'error' ? <p role="alert" className="text-[13.5px] text-bad">Couldn’t load your timetable: {my.message}</p>
@@ -175,27 +198,6 @@ function NowNext({ label, item, empty, sub }) {
   )
 }
 
-/* 2. Tasks and assignments (college-issued only) */
-function TasksSection({ tasks, live, now }) {
-  return (
-    <Card>
-      <CardTitle action={<Link href="#/classwork">All classwork</Link>}>Tasks and assignments</CardTitle>
-      {tasks.length ? (
-        <ul className="flex flex-col divide-y divide-line">
-          {tasks.slice(0, 6).map((t) => { const b = DUE_BADGE[t.state]; return (
-            <li key={t.id}><a href={t.href} className="flex items-center gap-3 py-2.5 hover:bg-ground/60">
-              <span className="min-w-0 flex-1"><b className="block truncate text-[14px] font-semibold">{t.title}</b>
-                <small className="text-[12.5px] text-muted">{[t.kind === 'reminder' ? 'Reminder' : 'Assignment', t.subject, t.due ? `due ${relTime(t.due, now)}` : 'no due date', t.submission].filter(Boolean).join(' · ')}</small></span>
-              {t.demo && <Badge tone="demo">Sample</Badge>}{b && <Badge tone={b[1]}>{b[0]}</Badge>}
-            </a></li>) })}
-          {tasks.length > 6 && <li className="pt-2 text-[12.5px] text-muted">{tasks.length - 6} more in Classwork.</li>}
-        </ul>
-      ) : <p className="text-[13.5px] text-muted">Nothing due from your teachers.</p>}
-      {live && <p className="mt-3 text-[12px] text-muted">Teachers on the college server post announcements, materials and dated reminders; online assignment hand-in is not on the server yet.</p>}
-    </Card>
-  )
-}
-
 /* 3. Academic progress: attendance from the shared calculation, published marks, alerts */
 function ProgressSection({ att, myData, live }) {
   const sum = att.sum, t = att.threshold, rec = att.record
@@ -205,7 +207,7 @@ function ProgressSection({ att, myData, live }) {
   const tgt = !live && myData?.target != null && myData?.subjects?.length ? checkTarget(myData.subjects, myData.gradeScale, myData.target, myData.academic) : null
   return (
     <Card>
-      <CardTitle action={<Link href="#/attendance">Attendance</Link>}>Academic progress</CardTitle>
+      <CardTitle action={<Link href="#/attendance">Attendance</Link>}>Attendance and marks</CardTitle>
       {att.status === 'loading' ? <Spinner label="Loading your record" /> : att.status === 'error' && !sum ? <p role="alert" className="text-[13.5px] text-bad">Couldn’t load your record: {att.message}</p> : <>
         <div className="flex items-baseline gap-3">
           <b className={cx('font-display text-[30px] font-semibold leading-none tabular-nums', t != null && sum?.overall.pct != null && sum.overall.pct < t ? 'text-bad' : 'text-ink')}>{sum?.overall.pct == null ? 'n/a' : `${sum.overall.pct}%`}</b>
@@ -233,17 +235,17 @@ function monthly(rows) {
 }
 
 /* 4. Upcoming events */
-function EventsSection({ events, now }) {
+function EventsSection({ events, now, onOpen }) {
   return (
     <Card>
-      <CardTitle action={<Link href="#/events">All events</Link>}>Upcoming events</CardTitle>
+      <CardTitle action={<Link href="#/events">All events</Link>}>College events</CardTitle>
       {events.length ? <ul className="flex flex-col divide-y divide-line">{events.slice(0, 4).map((e) => (
-        <li key={e.id}><a href={e.href} className="flex items-center gap-3 py-2.5 hover:bg-ground/60">
+        <li key={e.id}><a href={e.serverId && onOpen ? undefined : e.href} role={e.serverId && onOpen ? 'button' : undefined} tabIndex={0} onKeyDown={(ev) => { if (e.serverId && onOpen && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); onOpen(e.serverId) } }} onClick={(ev) => { if (e.serverId && onOpen) { ev.preventDefault(); onOpen(e.serverId) } }} className="flex cursor-pointer items-center gap-3 py-2.5 hover:bg-ground/60">
           <span className="w-[52px] flex-none text-center leading-tight"><b className="block font-display text-[18px] tabular-nums">{fmtDate(e.start, { day: 'numeric' })}</b><small className="text-[11px] font-semibold uppercase text-muted">{fmtDate(e.start, { month: 'short' })}</small></span>
           <span className="min-w-0 flex-1"><b className={cx('block truncate text-[14px] font-semibold', e.cancelled && 'line-through')}>{e.title}</b>
             <small className="block truncate text-[12.5px] text-muted">{[fmtDate(e.start, { hour: 'numeric', minute: '2-digit' }), e.venue, e.regCloses && Date.parse(e.regCloses) > now ? `registration closes ${relTime(e.regCloses, now)}` : null, e.registration].filter(Boolean).join(' · ')}</small></span>
           {e.cancelled ? <Badge tone="bad">Cancelled</Badge> : e.mine ? <Badge tone={e.mine === 'Approved' ? 'ok' : 'warn'}>{e.mine}</Badge> : null}
-          {e.source === 'sample' && <Badge tone="demo">Sample</Badge>}{e.source === 'college' && <Badge tone="info">College</Badge>}
+          {e.source === 'sample' && <Badge tone="demo">Sample</Badge>}{e.source === 'college' && <Badge tone="info">{e.club || 'College'}</Badge>}
         </a></li>))}</ul> : <p className="text-[13.5px] text-muted">No upcoming events.</p>}
     </Card>
   )
@@ -271,13 +273,13 @@ function StudySection({ items, myData, now, onAdd, onEdit, onDone }) {
 }
 
 /* 6. Important notices */
-function NoticesSection({ notices, now }) {
+function NoticesSection({ notices, now, onOpenEvent }) {
   const { markNotificationsRead } = useApp()
   return (
     <Card>
-      <CardTitle action={<Link href="#/notifications">All updates</Link>}>Important notices</CardTitle>
+      <CardTitle action={<Link href="#/notifications">All updates</Link>}>Notices</CardTitle>
       {notices.length ? <ul className="flex flex-col divide-y divide-line">{notices.slice(0, 5).map((n) => (
-        <li key={n.id}><a href={n.href} onClick={() => n.notification && markNotificationsRead([n.id])} className="flex items-start gap-3 py-2.5 hover:bg-ground/60">
+        <li key={n.id}><a href={n.eventId && onOpenEvent ? undefined : n.href} tabIndex={0} onClick={(ev) => { if (n.eventId && onOpenEvent) { ev.preventDefault(); onOpenEvent(n.eventId); return } n.notification && markNotificationsRead([n.id]) }} onKeyDown={(ev) => { if (n.eventId && onOpenEvent && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); onOpenEvent(n.eventId) } }} className="flex cursor-pointer items-start gap-3 py-2.5 hover:bg-ground/60">
           <span className="min-w-0 flex-1"><span className="flex items-center gap-2"><Badge tone={n.tone}>{n.kind}</Badge>{n.demo && <Badge tone="demo">Sample</Badge>}<small className="text-[12px] text-muted">{relTime(n.at, now)}</small></span>
             <b className={cx('mt-0.5 block text-[14px] leading-snug', n.unread === false ? 'font-medium' : 'font-semibold')}>{n.title}</b>{n.body && <small className="line-clamp-1 text-[12.5px] text-muted">{n.body}</small>}</span>
         </a></li>))}</ul> : <p className="text-[13.5px] text-muted">No notices for your class.</p>}
@@ -286,18 +288,18 @@ function NoticesSection({ notices, now }) {
 }
 
 /* 7. Quick actions */
-function QuickActions({ live, now }) {
+function QuickActions({ live, now, syllabus }) {
   const train = nextTrains({ from: 'Chembur', now, limit: 1 }).trains?.[0]
   const actions = [
-    ...(live ? [['Timetable', '#/portal?tab=tt']] : []), ['Attendance', '#/attendance'], ['Assignments', '#/classwork'],
-    ['Marks', live ? '#/portal?tab=record' : '#/planner'], ['Events', '#/events'], ['3D campus', '#/navigator'],
-    ['Washroom', '#/navigator?find=wc'], ['Library', '#/navigator?f=1&id=library'], ['Who to contact', '#/directory'],
+    ...(live ? [['Timetable', '#/portal?tab=tt']] : []), ['Attendance', '#/attendance'], ['Assignments', live ? '#/portal?tab=work' : '#/classwork'],
+    ['Marks', live ? '#/portal?tab=record' : '#/planner'], ['Reports', live ? '#/portal?tab=record' : '#/attendance'], ['Events', '#/events'],
+    ...(syllabus ? [['Syllabus', syllabus, true]] : []), ['3D campus', '#/navigator'], ['Library', '#/navigator?f=1&id=library'], ['Who to contact', '#/directory'],
   ]
   return (
     <Card className="lg:col-span-2">
       <CardTitle>Quick actions</CardTitle>
       <nav aria-label="Quick actions" className="flex flex-wrap gap-2">
-        {actions.map(([l, h]) => <a key={l} href={h} className="press inline-flex min-h-[40px] items-center rounded-lg border border-line2 bg-surface px-3 text-[13.5px] font-semibold hover:border-maroon hover:text-maroon">{l}</a>)}
+        {actions.map(([l, h, ext]) => <a key={l} href={h} {...(ext ? { target: '_blank', rel: 'noopener noreferrer' } : {})} className="press inline-flex min-h-[40px] items-center rounded-lg border border-line2 bg-surface px-3 text-[13.5px] font-semibold hover:border-maroon hover:text-maroon">{l}</a>)}
       </nav>
       {train && <p className="mt-3 text-[13px] text-muted">Next train from Chembur: <b className="text-ink">{train.depText}</b> {train.typeLabel} to {train.dest} · <Link href="#/commute">Trains and buses</Link></p>}
     </Card>

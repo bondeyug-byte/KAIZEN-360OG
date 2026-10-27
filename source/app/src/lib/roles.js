@@ -23,11 +23,11 @@ export const roleOf = (u) => (u && ['teacher', 'organiser', 'admin', 'hod', 'par
 
 /** Routes each role may open. Admin keeps oversight of everything. */
 const ACCESS = {
-  student: ['/', '/portal', '/navigator', '/classwork', '/attendance', '/planner', '/events', '/commute', '/canteen', '/rides', '/challenges', '/peer', '/notes', '/directory', '/notifications', '/profile', '/about'],
-  teacher: ['/', '/teacher', '/challenges', '/notes', '/navigator', '/commute', '/canteen', '/notifications', '/profile', '/about'],
+  student: ['/', '/portal', '/setup', '/clubs', '/navigator', '/classwork', '/attendance', '/planner', '/events', '/commute', '/canteen', '/rides', '/challenges', '/peer', '/notes', '/directory', '/notifications', '/profile', '/about'],
+  teacher: ['/', '/teacher', '/setup', '/clubs', '/challenges', '/notes', '/navigator', '/commute', '/canteen', '/notifications', '/profile', '/about'],
   organiser: ['/', '/organiser', '/events', '/notifications', '/profile', '/about'],
   // HOD: separate portal, no classroom screens (no own timetable, classes or attendance).
-  hod: ['/', '/hod', '/navigator', '/commute', '/canteen', '/notifications', '/profile', '/about'],
+  hod: ['/', '/hod', '/setup', '/navigator', '/commute', '/canteen', '/notifications', '/profile', '/about'],
   // Parent: read-only portal for their confirmed child(ren); nothing that edits college records.
   parent: ['/', '/parent', '/navigator', '/commute', '/profile', '/about'],
   admin: ['/', '/admin', '/teacher', '/navigator', '/classwork', '/attendance', '/planner', '/events', '/commute', '/canteen', '/rides', '/challenges', '/peer', '/notes', '/directory', '/notifications', '/profile', '/about'],

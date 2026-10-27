@@ -18,6 +18,7 @@ export const NAV_GROUPS = [
     { path: '/attendance', label: 'Attendance', icon: 'check', keywords: 'attendance percentage present absent', student: true },
     { path: '/planner', label: 'Academics', icon: 'layers', keywords: 'planner marks sgpa grades' },
     { path: '/events', label: 'Events & Activities', icon: 'calendar', keywords: 'events register' },
+    { path: '/clubs', label: 'Clubs & councils', icon: 'star', keywords: 'club council committee team event head organiser invitation', student: true },
     { path: '/commute', label: 'Trains & buses', icon: 'train', keywords: 'commute local train bus journey' },
     { path: '/canteen', label: 'Canteens', icon: 'cup', keywords: 'canteen food menu price vesit vesim' },
   ] },
@@ -63,6 +64,7 @@ const ROLE_NAV = {
       { path: '/', label: 'Teacher portal', icon: 'shield', keywords: 'teacher send assignment attendance classes' },
       { path: '/challenges', label: 'Challenges', icon: 'trophy', keywords: 'create edit delete review solutions' },
       { path: '/notes', label: 'Notes library', icon: 'file', keywords: 'notes requests study material' },
+      { path: '/clubs', label: 'Clubs & councils', icon: 'star', keywords: 'club council committee team event' },
     ] },
     { label: 'Campus', items: [
       { path: '/navigator', label: '3D Campus Explorer', icon: 'cube', keywords: 'map navigator rooms route' },

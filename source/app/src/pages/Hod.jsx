@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../store/AppContext.jsx'
 import { PageHeader, Card, CardTitle, Button, Badge, Empty, Segmented, Field, inputCls, relTime, ConfirmButton } from '../components/ui.jsx'
-import { useLoad, Loading, useCatalog, DivisionPicker, JoinRequests, CrRequests, Roster, Composer, MyPosts } from '../components/CloudPortal.jsx'
+import { useLoad, Loading, useCatalog, DivisionPicker, JoinRequests, Roster } from '../components/CloudPortal.jsx'
 import { api } from '../lib/portal.js'
 import { AlertsManager, EventsManager, ParentLinkRequests, AttendanceThreshold } from '../components/Records.jsx'
+import { Publisher, PublishedList, ClassRoles } from '../components/Academic.jsx'
+import { BranchView, Divisions, ClubsAdmin } from '../components/HodBranch.jsx'
 
 /**
  * HOD portal (separate route /hod). Only numbers in the server's HOD list reach it; every action is checked again
  * by the server against the HOD's own branch. No classroom screens: no own timetable, classes or attendance.
  */
-const TABS = [['dashboard', 'Dashboard'], ['teachers', 'Teachers'], ['instructions', 'Instructions'], ['send', 'Send to classes'], ['overrides', 'Join / CR overrides'], ['alerts', 'Attendance alerts'], ['events', 'Events'], ['parents', 'Parents'], ['audit', 'Audit log']]
+const TABS = [['dashboard', 'Dashboard'], ['branch', 'Branch view'], ['teachers', 'Teachers'], ['divisions', 'Divisions & syllabus'], ['instructions', 'Instructions'], ['send', 'Publish'], ['published', 'Published in branch'], ['roles', 'Class roles'], ['overrides', 'Join requests'], ['alerts', 'Attendance alerts'], ['events', 'Events'], ['clubs', 'Clubs & councils'], ['parents', 'Parents'], ['audit', 'Audit log']]
 export default function Hod({ query = {} }) {
   const { me, session } = useApp()
   const [tab, setTab] = useState(TABS.some((t) => t[0] === query.tab) ? query.tab : 'dashboard')
@@ -22,8 +24,13 @@ export default function Hod({ query = {} }) {
       {tab === 'dashboard' && <Dashboard go={setTab} />}
       {tab === 'teachers' && <Teachers />}
       {tab === 'instructions' && <Instructions />}
-      {tab === 'send' && <div className="grid gap-4 xl:grid-cols-[1fr_1fr]"><Composer /><div><h2 className="mb-2 font-display text-[17px] font-semibold">Sent by you</h2><MyPosts /></div></div>}
-      {tab === 'overrides' && <div className="flex flex-col gap-4"><JoinRequests hod title="Join requests (all divisions of your branch)" /><CrRequests /><Roster hod /></div>}
+      {tab === 'branch' && <BranchView />}
+      {tab === 'divisions' && <Divisions />}
+      {tab === 'send' && <div className="flex flex-col gap-4"><Publisher /><div><h2 className="mb-2 font-display text-[17px] font-semibold">Published by you</h2><PublishedList /></div></div>}
+      {tab === 'published' && <PublishedList branch />}
+      {tab === 'roles' && <ClassRoles />}
+      {tab === 'clubs' && <ClubsAdmin />}
+      {tab === 'overrides' && <div className="flex flex-col gap-4"><JoinRequests hod title="Join requests (all divisions of your branch)" /><Roster hod /></div>}
       {tab === 'audit' && <Audit />}
       {tab === 'alerts' && <div className="flex flex-col gap-4"><AttendanceThreshold /><AlertsManager hod /></div>}
       {tab === 'events' && <EventsManager />}

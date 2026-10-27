@@ -25,25 +25,29 @@ async function person(name, phone, role = 'student', viewport = { width: 1300, h
 const api = (x, route, opt = {}) => x.p.evaluate(async ([route, opt]) => { const q = opt.query ? '?' + new URLSearchParams(opt.query) : ''; const r = await fetch('/api/app/' + route + q, { method: opt.method || 'GET', headers: opt.body ? { 'Content-Type': 'application/json' } : {}, body: opt.body ? JSON.stringify(opt.body) : undefined }); return { status: r.status, body: await r.json().catch(() => null) } }, [route, opt])
 const main = (x) => x.p.locator('main').innerText()
 const go = async (x, hash, ms = 1600) => { await x.p.goto(BASE + '#' + hash); await x.p.reload(); await wait(x, ms) }
+// First sign-in now goes to "Set up your profile" (migration 7); these helpers complete it like the form does.
+// The page is reloaded afterwards so it reads the saved profile (the form does this itself via refreshAccount).
+const setupStudent = async (x, name, roll) => { const r = await api(x, 'setup', { method: 'PUT', body: { name, gender: 'prefer_not_to_say', mobile: '9876543210', yearLevel: 1, branch: 'CMPN', roll } }); await x.p.reload(); await x.p.waitForTimeout(1500); return r }
+const setupStaff = async (x, name) => { const r = await api(x, 'setup', { method: 'PUT', body: { name, mobile: '9876500000', confirm: true } }); await x.p.reload(); await x.p.waitForTimeout(1500); return r }
 
 // headers
 const hres = await fetch(BASE)
 check('security headers are sent (CSP, nosniff, frame, referrer, HSTS, permissions)', ['content-security-policy', 'x-content-type-options', 'x-frame-options', 'referrer-policy', 'strict-transport-security', 'permissions-policy'].every((h) => hres.headers.get(h)))
 
 // setup: HOD adds teachers; students sign in, name themselves, join
-const hod = await person('HOD', '9100000001', 'hod')
+const hod = await person('HOD', '9100000001', 'hod'); await setupStaff(hod, 'HOD CMPN')
 await api(hod, 'teachers', { method: 'POST', body: { email: E('9100000011'), name: 'Prof A', code: 'PA' } }); await api(hod, 'teacher-division', { method: 'POST', body: { email: E('9100000011'), division: 'D2A', subject: 'M1' } })
 await api(hod, 'teachers', { method: 'POST', body: { email: E('9100000012'), name: 'Prof B', code: 'PB' } }); await api(hod, 'teacher-division', { method: 'POST', body: { email: E('9100000012'), division: 'D2B', subject: 'M1' } })
 const s1 = await person('S1', '9100000101'), s2 = await person('S2', '9100000102')
 const ids = {}
 for (const [x, nm] of [[s1, 'Asha Test'], [s2, 'Ravi Test']]) {
-  await go(x, '/profile?onboard=1', 1800); await x.p.getByLabel('Name', { exact: true }).fill(nm); await x.p.getByRole('button', { name: /Save/ }).first().click(); await wait(x, 1800)
+  await setupStudent(x, nm, nm === 'Asha Test' ? '24-01' : '24-02')
   const r = await api(x, 'join-requests', { method: 'POST', body: { division: 'D2A' } }); await api(hod, 'join-decision', { method: 'POST', body: { ids: [r.body.joinRequest.id], decision: 'approve' } })
   ids[x.name] = (await api(x, 'me')).body.account.id
 }
 
 // ---- attendance: teacher records in the UI → persists → student Attendance page, Overview, College portal agree ----
-const t1 = await person('Teacher A', '9100000011', 'teacher')
+const t1 = await person('Teacher A', '9100000011', 'teacher'); await setupStaff(t1, 'Prof A')
 await go(t1, '/?tab=attendance', 2500)
 await t1.p.getByRole('button', { name: /Asha Test/ }).click(); await t1.p.getByRole('button', { name: 'Save attendance' }).click(); await wait(t1, 1600)
 const yest = new Date(Date.now() - 86400000 + 5.5 * 3600000).toISOString().slice(0, 10)
@@ -59,7 +63,7 @@ check('no invented 75% rule when the HOD set none', !/75%/.test(am) && /has not 
 await go(s1, '/', 2500)
 let ov = await main(s1)
 check('Overview shows the same attendance (50%, 1 of 2 recorded lectures)', /50%/.test(ov) && /1 of 2 recorded lectures/.test(ov), ov.slice(0, 600))
-check('Overview sections in order: timetable, tasks, progress, events, study, notices, quick actions', (() => { const idx = ["Today’s timetable", 'Tasks and assignments', 'Academic progress', 'Upcoming events', 'Study planner', 'Important notices', 'Quick actions'].map((h) => ov.indexOf(h)); return idx.every((v, i) => v >= 0 && (i === 0 || v > idx[i - 1])) })(), ov.slice(0, 300))
+check('Overview sections in order: syllabus, timetable, assignments, calendar, dates, attendance, events, notices, quick actions, study', (() => { const low = ov.toLowerCase(), idx = ['Syllabus', "Today’s timetable", 'Assignments', 'Academic calendar', 'Important academic dates', 'Attendance and marks', 'College events', 'Notices', 'Quick actions', 'Study planner'].map((h) => low.indexOf(h.toLowerCase())); return idx.every((v, i) => v >= 0 && (i === 0 || v > idx[i - 1])) })(), ov.slice(0, 300))
 check('Overview shows no sample records to a real account', !/Sample/.test(ov), ov.match(/.{0,60}Sample.{0,40}/)?.[0])
 await go(s1, '/portal?tab=record', 2200)
 check('College portal record agrees (50%)', /50%/.test(await main(s1)))
@@ -92,7 +96,7 @@ let mc = await main(s1)
 check('pending state shown; student stays in D2A meanwhile', /Waiting for approval/.test(mc) && /Move from\s+D2A\s+to\s+D2B/.test(mc) && /Your class\s+D2A/i.test(mc), mc.slice(0, 400))
 const tA = await api(t1, 'join-decision', { method: 'POST', body: { ids: [(await api(s1, 'me')).body.joinRequest.id], decision: 'approve' } })
 check('old-class teacher cannot approve the move', tA.body.results[0].ok === false)
-const t2 = await person('Teacher B', '9100000012', 'teacher')
+const t2 = await person('Teacher B', '9100000012', 'teacher'); await setupStaff(t2, 'Prof B')
 await go(t2, '/?tab=joins', 2200)
 const tm = await main(t2)
 check('target teacher sees “Change from D2A” and the reason', /Change from D2A/.test(tm) && /Picked D2A by mistake/.test(tm), tm.slice(0, 400))

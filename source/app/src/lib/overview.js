@@ -3,6 +3,7 @@ import { visiblePosts, mySubs, SUBST } from './posts.js'
 import { eventStatus, EVENT_STATUS, myRequest, regStatus } from './events.js'
 
 const H = 3600000
+const NOTICE_KIND = { assignment: 'Assignment', notice: 'Academic notice', exam: 'Exam', ca: 'CA', tutorial: 'Tutorial', practical: 'Practical', material: 'Study material', sports: 'Sports', cultural: 'Cultural', other: 'Update' }
 /** Due-date state used everywhere on the Overview: overdue, due within 36 h, later, or no date. */
 export function dueState(due, now) {
   if (!due) return 'none'
@@ -42,7 +43,7 @@ export function upcomingEvents({ shared, me, now, live, college = [] }) {
     if (e.status !== 'published' && e.status !== 'cancelled') continue
     const end = e.ends_at || e.starts_at
     if (Date.parse(end) < now) continue
-    out.push({ id: `ce_${e.id}`, title: e.title, start: e.starts_at, venue: e.venue || '', cancelled: e.status === 'cancelled', registration: e.registration || '', mine: null, regCloses: null, href: '#/portal?tab=record', source: 'college' })
+    out.push({ id: `ce_${e.id}`, serverId: e.id, club: e.club_name || null, title: e.title, start: e.starts_at, venue: e.venue || '', cancelled: e.status === 'cancelled', registration: e.registration || '', mine: null, regCloses: e.reg_deadline || null, href: '#/portal?tab=record', source: 'college' })
   }
   for (const e of shared.events || []) {
     if (live && e.demo) continue
@@ -61,7 +62,7 @@ export function importantNotices({ shared, me, now, live, record = null, notific
   const out = []
   if (record) {
     for (const a of record.alerts || []) out.push({ id: `al_${a.id}`, kind: 'Attendance alert', tone: 'bad', title: a.title, body: a.details || '', at: a.published_at, href: '#/portal?tab=record' })
-    for (const n of record.notices || []) out.push({ id: `no_${n.id}`, kind: n.author_role === 'hod' ? 'HOD' : 'Teacher', tone: 'neutral', title: n.title, body: n.author_name ? `From ${n.author_name}` : '', at: n.created_at, href: '#/portal?tab=feed' })
+    for (const n of record.notices || []) out.push({ id: `no_${n.id}`, kind: NOTICE_KIND[n.kind] || (n.author_role === 'hod' ? 'HOD' : 'Teacher'), tone: n.kind === 'exam' || n.kind === 'ca' ? 'warn' : 'neutral', title: n.title, body: n.author_name ? `From ${n.author_name}` : '', at: n.created_at, href: '#/portal?tab=work' })
   }
   for (const p of visiblePosts(shared, me, now)) {
     if (p.kind !== 'notice' || (live && p.demo)) continue

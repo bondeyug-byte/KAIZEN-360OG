@@ -30,6 +30,10 @@ async function google(x, portal, email, claims = {}) {
 const person = async (name, portal, email, claims) => { const x = await browser(name); x.res = await google(x, portal, email, claims); return x }
 const api = (x, route, opt = {}) => x.p.evaluate(async ([route, opt]) => { const q = opt.query ? '?' + new URLSearchParams(opt.query) : ''; const r = await fetch('/api/app/' + route + q, { method: opt.method || 'GET', headers: opt.body ? { 'Content-Type': 'application/json' } : {}, body: opt.body ? JSON.stringify(opt.body) : undefined }); return { status: r.status, body: await r.json().catch(() => null) } }, [route, opt])
 const main = (x) => x.p.locator('main').innerText().catch(() => '')
+// First sign-in now goes to "Set up your profile" (migration 7); these helpers complete it like the form does.
+// The page is reloaded afterwards so it reads the saved profile (the form does this itself via refreshAccount).
+const setupStudent = async (x, name, roll) => { const r = await api(x, 'setup', { method: 'PUT', body: { name, gender: 'prefer_not_to_say', mobile: '9876543210', yearLevel: 1, branch: 'CMPN', roll } }); await x.p.reload(); await x.p.waitForTimeout(1500); return r }
+const setupStaff = async (x, name) => { const r = await api(x, 'setup', { method: 'PUT', body: { name, mobile: '9876500000', confirm: true } }); await x.p.reload(); await x.p.waitForTimeout(1500); return r }
 const go = async (x, hash, ms = 1600) => { await x.p.goto(x.base + '#' + hash); await x.p.reload(); await wait(x, ms) }
 
 // headers needed for Google's popup
@@ -38,7 +42,7 @@ check('COOP allows the Google popup to report back; CSP allows Firebase endpoint
 
 // 1 · authorised college account
 const s1 = await person('S1', 'student', 'asha.test@ves.ac.in')
-check('1. authorised @ves.ac.in account signs in (lands in onboarding, then the portal)', /#\/profile\?onboard=1/.test(s1.res.url) && !s1.res.alert, `${s1.res.url} ${s1.res.alert}`)
+check('1. authorised @ves.ac.in account signs in (lands in “Set up your profile”, then the portal)', /#\/setup/.test(s1.res.url) && !s1.res.alert, `${s1.res.url} ${s1.res.alert}`)
 check('login page shows no demo sign-in on this build', !/Demo sign-in/.test(await (async () => { const y = await browser('look'); await y.p.goto(BASE + '#/login?role=student'); await wait(y, 800); return y.p.locator('body').innerText() })()))
 // emailed code step, seen in the browser
 { const y = await browser('code-step')
@@ -72,7 +76,8 @@ check('6. a college account without a role is refused on the Teacher and HOD por
 
 // set up roles through the real UI/API: HOD (from HOD_EMAILS) adds a teacher; students join
 const hod = await person('HOD', 'hod', 'hod.cmpn@ves.ac.in')
-check('HOD from the server setting signs in on the HOD tab and lands in the HOD portal', /#\/hod/.test(hod.res.url) && /HOD/.test(await main(hod)), hod.res.url + ' ' + hod.res.alert)
+const hodSetupPage = await main(hod), hodSetup = await setupStaff(hod, 'HOD CMPN')
+check('HOD from the server setting signs in on the HOD tab (set-up first, then the HOD portal)', /#\/(setup|hod)/.test(hod.res.url) && !hod.res.alert && /HOD of CMPN/.test(hodSetupPage) && hodSetup.status === 200, hod.res.url + ' ' + hod.res.alert + ' ' + hodSetupPage.slice(0, 200))
 await go(hod, '/hod?tab=teachers', 1800)
 await hod.p.getByLabel('College Google account').fill('Prof.A@ves.ac.in'); await hod.p.getByLabel('Teacher name').fill('Prof A'); await hod.p.getByRole('button', { name: 'Save teacher' }).click(); await wait(hod, 1500)
 const tlist = await api(hod, 'teachers')
@@ -81,11 +86,12 @@ await api(hod, 'teacher-division', { method: 'POST', body: { email: 'prof.a@ves.
 const gm = await person('gmail-teacher', 'hod', 'x@gmail.com')
 check('HOD tab refuses a Gmail account', /college Google account/.test(gm.res.alert))
 const t1 = await person('Teacher', 'teacher', 'prof.a@ves.ac.in')
+await setupStaff(t1, 'Prof A'); await go(t1, '/', 2000)
 check('the added teacher signs in on the Teacher tab and lands in the Teacher portal', /Teacher portal/.test(await main(t1)) && !t1.res.alert, t1.res.alert + ' ' + (await main(t1)).slice(0, 100))
-await go(s1, '/profile?onboard=1', 1800); await s1.p.getByLabel('Name', { exact: true }).fill('Asha Test'); await s1.p.getByRole('button', { name: /Save/ }).first().click(); await wait(s1, 1800)
+await setupStudent(s1, 'Asha Test', '24-01')
 const jr = await api(s1, 'join-requests', { method: 'POST', body: { division: 'D2A' } }); await api(t1, 'join-decision', { method: 'POST', body: { ids: [jr.body.joinRequest.id], decision: 'approve' } })
 const s2 = await person('S2', 'student', 'ravi.test@ves.ac.in')
-await go(s2, '/profile?onboard=1', 1800); await s2.p.getByLabel('Name', { exact: true }).fill('Ravi Test'); await s2.p.getByRole('button', { name: /Save/ }).first().click(); await wait(s2, 1800)
+await setupStudent(s2, 'Ravi Test', '24-02')
 const jr2 = await api(s2, 'join-requests', { method: 'POST', body: { division: 'D2A' } }); await api(t1, 'join-decision', { method: 'POST', body: { ids: [jr2.body.joinRequest.id], decision: 'approve' } })
 
 // 7–8 · route and API boundaries
@@ -101,7 +107,7 @@ await go(s1, '/attendance', 2200)
 const am = await main(s1)
 check('14. existing features intact: teacher attendance → student Attendance page (0% · 1 absent)', /0%/.test(am) && /0 present · 1 absent/.test(am), am.slice(0, 300))
 await go(s1, '/', 2500)
-check('14b. Overview and timetable render for the Google account', /Today’s timetable/.test(await main(s1)) && /Academic progress/.test(await main(s1)))
+check('14b. Overview and timetable render for the Google account', /Today’s timetable/.test(await main(s1)) && /Attendance and marks/.test(await main(s1)))
 
 // 9 · refresh keeps the session; the session restore re-checks the server
 await s1.p.reload(); await wait(s1, 2500)

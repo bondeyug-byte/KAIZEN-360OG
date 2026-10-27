@@ -6,7 +6,9 @@ import AudiencePicker from '../components/AudiencePicker.jsx'
 import { FilePicker, ResourceViewer, ReviewList, TeacherChallenges } from './Challenges.jsx'
 import AttendanceDesk from './AttendanceDesk.jsx'
 import { AttendanceTaker, MarksManager, AlertsManager, ParentLinkRequests } from '../components/Records.jsx'
-import { TimetableSchedule, JoinRequests, CrRequests, InstructionsInbox, Composer as CloudComposer, MyPosts as CloudPosts, ReminderForm, Reminders, Roster, StaffTimetable } from '../components/CloudPortal.jsx'
+import { TimetableSchedule, JoinRequests, InstructionsInbox, ReminderForm, Reminders, Roster, StaffTimetable } from '../components/CloudPortal.jsx'
+import { Publisher, PublishedList, ClassRoles, AcademicCalendar, useCalendar } from '../components/Academic.jsx'
+import { ymdToday, monthGrid } from '../lib/calendar.js'
 import { KIND, STATUS, SUBST, createPost, updatePost, setPostStatus, sentBy, subsFor, reviewAssignment, allowedDivisions, recipients, isAdmin } from '../lib/posts.js'
 import { postChallenge, setChallengeStatus, submissionsFor, SUB } from '../lib/challenges.js'
 import { putFile, deleteFile, fmtSize } from '../lib/files.js'
@@ -35,19 +37,20 @@ function CloudTeacher({ query }) {
   const t = session.teacher || {}
   const c = session.counts || {}
   const divisions = t.divisions || [...new Set((t.teaches || []).map((x) => x.division))]
-  const tabs = [['attendance', 'Attendance'], ['marks', 'Marks'], ['joins', `Join requests${c.pendingJoins ? ` (${c.pendingJoins})` : ''}`], ['cr', `CR requests${c.pendingCr ? ` (${c.pendingCr})` : ''}`], ['instructions', `Instructions from HOD${c.openInstructions ? ` (${c.openInstructions})` : ''}`],
-    ['send', 'Send to classes'], ['sent', 'Sent'], ['reminder', 'Reminders'], ...(t.canPublishTimetable ? [['timetable', 'Timetable Schedule']] : []), ['tt', 'View timetables'], ['roster', 'Class lists'], ['alerts', 'Attendance alerts'], ['parents', 'Parents']]
+  const tabs = [['attendance', 'Attendance'], ['marks', 'Marks'], ['joins', `Join requests${c.pendingJoins ? ` (${c.pendingJoins})` : ''}`], ['roles', `Class roles${session.pendingRoles ? ` (${session.pendingRoles})` : ''}`], ['instructions', `Instructions from HOD${c.openInstructions ? ` (${c.openInstructions})` : ''}`],
+    ['send', 'Publish'], ['sent', 'Published'], ['calendar', 'Calendar'], ['reminder', 'Reminders'], ...(t.canPublishTimetable ? [['timetable', 'Timetable Schedule']] : []), ['tt', 'View timetables'], ['roster', 'Class lists'], ['alerts', 'Attendance alerts'], ['parents', 'Parents']]
   const [tab, setTab] = useState(tabs.some((x) => x[0] === query.tab) ? query.tab : 'joins')
   useEffect(() => { if (query.tab) setTab(query.tab) }, [query.tab])
   return (
     <div>
-      <PageHeader title="Teacher portal" subtitle={divisions.length ? `Your divisions: ${divisions.join(', ')}. Everything here is saved on the college server and checked there.` : 'You have no divisions yet. Ask your HOD to assign them.'} />
+      <PageHeader title="Teacher portal" subtitle={divisions.length ? `Your divisions: ${divisions.join(', ')}. Everything here is saved on the college server and checked there.` : 'You have no divisions yet. Ask your HOD to assign them.'} actions={<a href="#/setup?edit=1" className="text-[13px] font-semibold text-maroon underline">My profile details</a>} />
       <div className="mb-4 overflow-x-auto"><Segmented label="Teacher section" value={tab} onChange={setTab} options={tabs.map(([value, label]) => ({ value, label }))} /></div>
       {tab === 'joins' && (divisions.length ? <JoinRequests /> : <Empty icon="user" title="No divisions assigned">Join requests appear here once your HOD assigns your divisions.</Empty>)}
-      {tab === 'cr' && (divisions.length ? <CrRequests /> : <Empty icon="user" title="No divisions assigned">Ask your HOD to assign your divisions.</Empty>)}
+      {tab === 'roles' && <ClassRoles />}
+      {tab === 'calendar' && <TeacherCalendar />}
       {tab === 'instructions' && <InstructionsInbox />}
-      {tab === 'send' && <CloudComposer />}
-      {tab === 'sent' && <CloudPosts />}
+      {tab === 'send' && <Publisher onDone={() => setTab('sent')} />}
+      {tab === 'sent' && <PublishedList />}
       {tab === 'reminder' && (divisions.length ? <div className="grid gap-4 xl:grid-cols-2"><ReminderForm divisions={divisions} /><Reminders division={divisions[0]} /></div> : <Empty icon="user" title="No divisions assigned">Ask your HOD to assign your divisions.</Empty>)}
       {tab === 'timetable' && <TimetableSchedule />}
       {tab === 'tt' && <StaffTimetable />}
@@ -58,6 +61,13 @@ function CloudTeacher({ query }) {
       {tab === 'parents' && <ParentLinkRequests />}
     </div>
   )
+}
+
+function TeacherCalendar() {
+  const today = ymdToday()
+  const [range, setRange] = useState(() => { const g = monthGrid(today); return [g[0].date, g[41].date] })
+  const cal = useCalendar(true, range[0], range[1])
+  return <AcademicCalendar items={cal.items} status={cal.status} message={cal.message} today={today} onRange={(a, b) => setRange([a, b])} />
 }
 
 function DemoTeacherPortal({ query = {} }) {

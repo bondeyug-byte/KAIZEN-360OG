@@ -31,9 +31,7 @@ export default function Profile({ query }) {
     let ac = {}
     if (isStudent(me) && real) {
       // Phone accounts: the class comes from an approved join request (College portal), not from this form.
-      const roll = (f.roll || '').trim()
-      if (roll && !/^[A-Za-z0-9][A-Za-z0-9-]{1,19}$/.test(roll)) { setAcErr({ roll: 'Roll number: letters, digits or hyphens.' }); return }
-      setAcErr({}); ac = { roll }
+      setAcErr({}); ac = { roll: me.roll || '' } // roll is edited in "Set up your profile" (server-validated)
     } else if (isStudent(me) && !locked) {
       const e2 = validateAcademic(f, db.profiles, me.id); setAcErr(e2)
       if (Object.keys(e2).length) return
@@ -43,7 +41,7 @@ export default function Profile({ query }) {
     updateProfile({ ...rest, ...ac, name: f.name.trim(), branch: f.branch.trim() || (BRANCHES.find((b) => b.id === f.branchId)?.label || ''), email: me.authMethod === 'google' ? me.email : f.email.trim(), collegeId: (f.collegeId || '').trim().slice(0, 30) })
     pushToast('Profile saved. Suggestions are updated.')
     // New Google-verified students go straight on to "Join your class".
-    if (query?.onboard) window.location.hash = real && !session.enrollment ? '/portal?tab=class' : '/'
+    if (query?.onboard) window.location.hash = real && !session.enrollment ? '/setup' : '/'
   }
   return (
     <div>
@@ -57,7 +55,7 @@ export default function Profile({ query }) {
             <div className="grid gap-3 sm:grid-cols-2">
               {isStudent(me) && real && <>
                 <div className="sm:col-span-2 rounded-lg bg-ground px-3 py-2 text-[13.5px]">{session.enrollment ? <>Your class: <b>{session.enrollment.division_code}</b> (approved).{' '}{session.joinRequest?.status === 'pending' && session.joinRequest.kind === 'transfer' ? <>Your request to move to <b>{session.joinRequest.division_code}</b> is waiting for approval.</> : <>Wrong division? <a className="font-semibold text-maroon underline" href="#/portal?tab=class">Request a change</a> (a teacher or the HOD approves it).</>}</> : session.joinRequest?.status === 'pending' ? <>Request to join <b>{session.joinRequest.division_code}</b> is pending.</> : <>You haven’t joined a class yet. <a className="font-semibold text-maroon underline" href="#/portal?tab=class">Join your class</a>.</>}</div>
-                <Field label="Roll number (optional)" error={acErr.roll}>{(id) => <input id={id} className={inputCls} value={f.roll} maxLength={20} onChange={(e) => setF({ ...f, roll: e.target.value })} />}</Field>
+                <div className="sm:col-span-2 rounded-lg bg-ground px-3 py-2 text-[13.5px]">Roll number {me.roll ? <b>{me.roll}</b> : 'not set'}, mobile, year and branch are kept in your verified profile. <a className="font-semibold text-maroon underline" href="#/setup?edit=1">Edit profile details</a></div>
               </>}
               {isStudent(me) && !real && <>
                 <Field label="Academic year" error={acErr.year}>{(id) => <select id={id} disabled={locked} className={inputCls} value={f.year} onChange={(e) => setF({ ...f, year: e.target.value, division: '' })}><option value="">Choose…</option>{YEARS.map((y) => <option key={y.id} value={y.id}>{y.label}</option>)}</select>}</Field>

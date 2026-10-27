@@ -5,7 +5,7 @@
 // HOD draft attendance alerts and the branch HOD publishes them; the HOD publishes branch events. Parents only READ,
 // and only for students the college confirmed them for (parent_links.status = 'approved', checked on every request).
 module.exports = (H) => {
-  const { db, can, need, bad, forbidden, notFound, conflict, body, txt, isUuid, division, limit, branchOf, displayName, allowedDivisions, normalizeEmail, mask } = H;
+  const { db, can, need, bad, forbidden, notFound, conflict, body, txt, isUuid, division, limit, branchOf, displayName, allowedDivisions, normalizeEmail, mask, VISIBLE_POSTS } = H;
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/, TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
   const RELATIONS = ['Mother', 'Father', 'Guardian', 'Parent'];
   const ymd = (d) => new Date(d).toISOString().slice(0, 10);
@@ -260,6 +260,9 @@ module.exports = (H) => {
   }
 
   /* ---------------- college events (HOD, per branch) ---------------- */
+  // Club events (api/_portal.js) share this table; a club event is for everyone unless its audience names
+  // branches and/or years ($1 = the viewer's branch, $2 = their year level 1-4).
+  const CLUB_AUDIENCE = `((coalesce(jsonb_array_length(e.audience->'branches'), 0) = 0 or e.audience->'branches' ? $1::text) and (coalesce(jsonb_array_length(e.audience->'years'), 0) = 0 or e.audience->'years' @> to_jsonb($2::int)))`;
   const branchArg = (who, v) => { const br = txt(v, 10).toUpperCase() || who.hodBranches[0]; if (!can(who, 'event.manage', { branch: br })) throw forbidden('Only the HOD of this branch can manage its events.'); return br; };
   async function saveEvent(who, req) {
     const b = body(req);
@@ -269,7 +272,7 @@ module.exports = (H) => {
     const vals = [title, txt(b.description, 2000), txt(b.venue, 120), new Date(starts).toISOString(), ends ? new Date(ends).toISOString() : null, txt(b.registration, 300)];
     if (b.id) {
       if (!isUuid(b.id)) throw bad('INVALID_ID', 'Unknown event.');
-      const [e] = await db.q('select branch_code from college_events where id = $1', [b.id]);
+      const [e] = await db.q('select branch_code from college_events where id = $1 and club_id is null', [b.id]);
       if (!e) throw notFound('Event not found.');
       branchArg(who, e.branch_code);
       await db.q('update college_events set title = $2, description = $3, venue = $4, starts_at = $5, ends_at = $6, registration = $7, updated_at = now() where id = $1', [b.id, ...vals]);
@@ -284,7 +287,7 @@ module.exports = (H) => {
   async function eventStatus(who, req) {
     const b = body(req);
     if (!isUuid(b.id) || !['draft', 'published', 'cancelled'].includes(b.status)) throw bad('INVALID', 'Unknown event or status.');
-    const [e] = await db.q('select branch_code from college_events where id = $1', [b.id]);
+    const [e] = await db.q('select branch_code from college_events where id = $1 and club_id is null', [b.id]);
     if (!e) throw notFound('Event not found.');
     branchArg(who, e.branch_code);
     await db.q(`update college_events set status = $2, published_at = case when $2 = 'published' then coalesce(published_at, now()) else published_at end, updated_at = now() where id = $1`, [b.id, b.status]);
@@ -295,7 +298,11 @@ module.exports = (H) => {
     if (who.base === 'hod') return { events: await db.q(`select id, branch_code, title, description, venue, starts_at, ends_at, registration, status, updated_at from college_events where branch_code = any($1) order by starts_at desc limit 100`, [who.hodBranches]) };
     const br = who.base === 'student' && who.enrollment ? branchOf(who, who.enrollment.division_code) : who.teacher ? who.teacher.branch : null;
     if (!br) return { events: [] };
-    return { events: await db.q(`select id, title, description, venue, starts_at, ends_at, registration, status, updated_at from college_events where branch_code = $1 and status in ('published', 'cancelled') and starts_at > now() - interval '30 days' order by starts_at limit 50`, [br]) };
+    const lvl = who.base === 'student' ? (who.divisions.get(who.enrollment.division_code) || {}).level || 0 : 0;
+    return { events: await db.q(`select e.id, e.title, e.description, e.venue, e.starts_at, e.ends_at, e.registration, e.status, e.updated_at, e.club_id, c.name as club_name
+      from college_events e left join clubs c on c.id = e.club_id
+      where e.status in ('published', 'cancelled') and e.starts_at > now() - interval '30 days'
+        and (e.branch_code = $1 or (e.club_id is not null and c.active and ($3::boolean or ${CLUB_AUDIENCE}))) order by e.starts_at limit 50`, [br, lvl, who.base !== 'student']) };
   }
 
   /* ---------------- settings ---------------- */
@@ -319,7 +326,7 @@ module.exports = (H) => {
   /* ---------------- the read-only record (parent and student view) ---------------- */
   async function recordFor(studentId, divisionsMap) {
     const [stu] = await db.q(`select a.id, a.name, s.profile->>'roll' as roll from accounts a left join account_state s on s.account_id = a.id where a.id = $1`, [studentId]);
-    const [enr] = await db.q(`select e.division_code, e.year_id, y.label as year_label, d.name as division_name, d.branch_code, b.name as branch_name
+    const [enr] = await db.q(`select e.division_code, e.year_id, y.label as year_label, y.level as year_level, d.name as division_name, d.branch_code, b.name as branch_name
       from class_enrollments e join divisions d on d.code = e.division_code left join academic_years y on y.id = e.year_id left join branches b on b.code = d.branch_code
       where e.student_id = $1 and e.status = 'active' order by e.approved_at desc limit 1`, [studentId]);
     const student = { id: stu.id, name: stu.name || '', roll: stu.roll || null, division: enr ? enr.division_code : null, divisionName: enr ? enr.division_name : null, branch: enr ? enr.branch_code : null, branchName: enr ? enr.branch_name : null, year: enr ? enr.year_label || enr.year_id : null };
@@ -344,9 +351,12 @@ module.exports = (H) => {
     const marks = { items, byTerm: [...termMap.values()].map((t) => ({ ...t, percent: Math.round((1000 * t.obtained) / t.max) / 10 })) };
     const alerts = await db.q(`select id, subject, title, details, next_steps, contact, published_at, updated_at from attendance_alerts where student_id = $1 and status = 'published' order by published_at desc limit 50`, [studentId]);
     const notices = enr ? await db.q(`select p.id, p.kind, p.title, p.body, p.author_name, p.author_role, p.created_at, (p.file_id is not null) as has_file from post_targets t join posts p on p.id = t.post_id
-      where t.division_code = $1 and p.deleted_at is null order by p.created_at desc limit 20`, [enr.division_code]) : [];
+      where t.division_code = $1 and ${VISIBLE_POSTS} order by p.created_at desc limit 20`, [enr.division_code]) : [];
     const reminders = enr ? await db.q(`select id, title, body, remind_at, author_name from reminders where division_code = $1 and deleted_at is null and remind_at > now() - interval '1 day' order by remind_at limit 20`, [enr.division_code]) : [];
-    const events = enr ? await db.q(`select id, title, description, venue, starts_at, ends_at, registration, status, updated_at from college_events where branch_code = $1 and status in ('published', 'cancelled') and starts_at > now() - interval '60 days' order by starts_at limit 50`, [enr.branch_code]) : [];
+    const events = enr ? await db.q(`select e.id, e.title, e.description, e.venue, e.starts_at, e.ends_at, e.registration, e.status, e.updated_at, e.club_id, c.name as club_name, e.reg_deadline, e.reg_mode
+      from college_events e left join clubs c on c.id = e.club_id
+      where e.status in ('published', 'cancelled') and e.starts_at > now() - interval '60 days'
+        and (e.branch_code = $1 or (e.club_id is not null and c.active and ${CLUB_AUDIENCE})) order by e.starts_at limit 50`, [enr.branch_code, enr.year_level || 0]) : [];
     return { student, enrolled: !!enr, attendance, attendanceThreshold: enr ? await threshold(enr.branch_code) : null, marks, alerts, notices, reminders, events };
   }
   async function parentChildren(who) {

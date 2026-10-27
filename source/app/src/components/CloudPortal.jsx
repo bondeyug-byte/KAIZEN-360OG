@@ -21,6 +21,7 @@ let catalogCache = null
 export function useCatalog() { return useLoad(() => (catalogCache = catalogCache || api('catalog').catch((e) => { catalogCache = null; throw e })), []) }
 export const resetCatalog = () => { catalogCache = null }
 const STATUS_TONE = { approved: 'ok', pending: 'warn', rejected: 'bad', cancelled: 'neutral' }
+const ROLE_NAME = { cr: 'Class representative', si: 'Sports incharge', ci: 'Cultural incharge' }
 const busyWrap = (setBusy, fn) => async (...a) => { setBusy(true); try { await fn(...a) } finally { setBusy(false) } }
 
 /* ---------------- Branch → Year → Division picker (F5) ---------------- */
@@ -69,18 +70,24 @@ export function MyClass() {
   const act = (fn, okText) => busyWrap(setBusy, async () => { try { await fn(); pushToast(okText); await refreshAccount(); refreshTimetable() } catch (x) { pushToast(x.message, 'bad') } })
   const send = act(() => api('join-requests', { method: 'POST', body: { division } }), `Request sent to join ${division}. Your teacher, class rep or HOD will review it.`)
   const cancel = act(() => api('join-requests', { method: 'DELETE', query: { id: jr.id } }), 'Request cancelled.')
-  const askCr = act(() => api('cr-requests', { method: 'POST' }), 'Class-rep request sent to your teacher.')
-  const cancelCr = act(() => api('cr-requests', { method: 'DELETE', query: { id: crq.id } }), 'Class-rep request cancelled.')
+  const askRole = (role) => act(() => api('role-requests', { method: 'POST', body: { role } }), `${ROLE_NAME[role]} request sent to your class teacher.`)()
+  const cancelCr = act(() => api('cr-requests', { method: 'DELETE', query: { id: crq.id } }), 'Request cancelled.')
+  const roles = session.classRoles || { cr: [], si: [], ci: [] }
+  const held = [isCr && `Class representative${roles.crPosition ? ` (${roles.crPosition} CR)` : ''}`, (roles.si || []).length && 'Sports incharge (SI)', (roles.ci || []).length && 'Cultural incharge (CI)'].filter(Boolean)
   if (e) return (
     <Card className="max-w-xl">
       <CardTitle eyebrow="Your class">{e.division_code}</CardTitle>
       <p className="mt-1 text-[13.5px] text-muted">Approved {relTime(e.approved_at)}. You see this class’s timetable, notices, reminders and attendance.</p>
       <ChangeDivision e={e} jr={jr} cat={cat} busy={busy} setBusy={setBusy} />
       <div className="mt-4 border-t border-line pt-3">
-        <h3 className="text-[14px] font-semibold">Class representative</h3>
-        {isCr ? <p className="mt-1 text-[13.5px]"><Badge tone="ok">You are a class rep</Badge> Use the CR Tools tab.</p>
-          : crq?.status === 'pending' ? <p className="mt-1 flex flex-wrap items-center gap-2 text-[13.5px]"><Badge tone="warn">Request waiting</Badge>Your teacher or HOD will decide. <Button size="sm" variant="ghost" disabled={busy} onClick={cancelCr}>Cancel request</Button></p>
-          : <div className="mt-1 flex flex-wrap items-center gap-2 text-[13.5px]">{crq?.status === 'rejected' && <Badge tone="bad">Last request not approved{crq.note ? `: ${crq.note}` : ''}</Badge>}<Button size="sm" variant="secondary" disabled={busy} onClick={askCr}>Request CR role</Button></div>}
+        <h3 className="text-[14px] font-semibold">Class roles</h3>
+        {held.length > 0 && <p className="mt-1 flex flex-wrap gap-1.5 text-[13.5px]">{held.map((h) => <Badge key={h} tone="ok">{h}</Badge>)}</p>}
+        {crq?.status === 'pending' ? <p className="mt-1 flex flex-wrap items-center gap-2 text-[13.5px]"><Badge tone="warn">{ROLE_NAME[crq.role || 'cr']} request waiting</Badge>Your class teacher or HOD will decide. <Button size="sm" variant="ghost" disabled={busy} onClick={cancelCr}>Cancel request</Button></p>
+          : <div className="mt-1 flex flex-wrap items-center gap-2 text-[13.5px]">{crq?.status === 'rejected' && <Badge tone="bad">Last request not approved{crq.note ? `: ${crq.note}` : ''}</Badge>}
+            {!isCr && <Button size="sm" variant="secondary" disabled={busy} onClick={() => askRole('cr')}>Request CR</Button>}
+            {!(roles.si || []).length && <Button size="sm" variant="secondary" disabled={busy} onClick={() => askRole('si')}>Request sports incharge (SI)</Button>}
+            {!(roles.ci || []).length && <Button size="sm" variant="secondary" disabled={busy} onClick={() => askRole('ci')}>Request cultural incharge (CI)</Button>}</div>}
+        <p className="mt-2 text-[12.5px] text-muted">Your class teacher approves each role. A class has a male CR and a female CR (the teacher chooses), one SI and one CI.</p>
       </div>
     </Card>)
   return (

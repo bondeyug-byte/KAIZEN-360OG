@@ -17,7 +17,7 @@ import { notify, deadlineNotifications, markRead, markAllRead } from '../lib/not
 
 const Ctx = createContext(null)
 /** Role fields from a server response (/api/app/me or /api/auth/*). The browser never decides these. */
-const rolesFrom = (r) => ({ role: r.role || 'student', hod: r.hod || null, teacher: r.teacher || null, parent: r.role === 'parent' ? r.parent || {} : null, admin: false, ...(r.cr ? { cr: r.cr } : {}), ...('enrollment' in r ? { enrollment: r.enrollment, joinRequest: r.joinRequest, crRequest: r.crRequest, counts: r.counts } : {}) })
+const rolesFrom = (r) => ({ role: r.role || 'student', hod: r.hod || null, teacher: r.teacher || null, parent: r.role === 'parent' ? r.parent || {} : null, admin: false, ...(r.cr ? { cr: r.cr } : {}), ...('enrollment' in r ? { enrollment: r.enrollment, joinRequest: r.joinRequest, crRequest: r.crRequest, counts: r.counts } : {}), ...('setupDone' in r ? { setup: r.setup || null, setupDone: !!r.setupDone, classRoles: r.classRoles || null, clubs: r.clubs || null, pendingRoles: r.pendingRoles || 0 } : {}) })
 export const useApp = () => useContext(Ctx)
 
 export function AppProvider({ children }) {

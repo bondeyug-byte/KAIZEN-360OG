@@ -90,11 +90,11 @@ async function resolve(email, issuedAt = null) {
   if (issuedAt !== null && account.sessions_valid_after && issuedAt < Math.floor(new Date(account.sessions_valid_after).getTime() / 1000)) {
     return { account: null, phone, base: 'none', ended: true, hodBranches: [], teacher: null, crDivisions: [], enrollment: null, divisions: new Map(), parentOf: [] };
   }
-  const divisions = new Map((await db.q('select code, branch_code, year_id, name, confirmed from divisions')).map((r) => [r.code, r]));
+  const divisions = new Map((await db.q('select d.code, d.branch_code, d.year_id, d.name, d.confirmed, y.level from divisions d left join academic_years y on y.id = d.year_id')).map((r) => [r.code, r]));
   const branches = inst ? await hodBranches(phone) : [];
   const teacher = !inst || branches.length ? null : await teacherRecord(phone);
   let base = branches.length ? 'hod' : teacher ? 'teacher' : inst ? 'student' : 'parent';
-  let enrollment = null, crDivisions = [], parentIds = inst ? [] : parentIdsEarly;
+  let enrollment = null, crDivisions = [], siDivisions = [], ciDivisions = [], parentIds = inst ? [] : parentIdsEarly;
   if (base === 'student') {
     parentIds = await parentOf(phone);
     if (parentIds.length && !(await isEnrolledPhone(phone))) base = 'parent'; // an enrolled student stays a student
@@ -102,8 +102,9 @@ async function resolve(email, issuedAt = null) {
   if (base === 'student') {
     [enrollment] = await db.q(`select division_code, year_id, approved_at from class_enrollments where student_id = $1 and status = 'active' order by approved_at desc limit 1`, [account.id]);
     crDivisions = (await db.q('select division_code from cr_assignments where student_id = $1 and active', [account.id])).map((r) => r.division_code);
+    for (const r of await db.q('select division_code, role from class_roles where student_id = $1 and active', [account.id])) (r.role === 'si' ? siDivisions : ciDivisions).push(r.division_code);
   }
-  return { account, phone, base, hodBranches: branches, teacher, crDivisions, enrollment: enrollment || null, divisions, parentOf: base === 'parent' ? parentIds : [] };
+  return { account, phone, base, hodBranches: branches, teacher, crDivisions, siDivisions, ciDivisions, enrollment: enrollment || null, divisions, parentOf: base === 'parent' ? parentIds : [] };
 }
 
 module.exports = { resolve, signInRole, teacherRecord, hodBranches, syncFromEnv, parentOf };
