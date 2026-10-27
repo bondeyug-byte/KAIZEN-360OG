@@ -1,5 +1,14 @@
 // Browser side of authentication. Talks ONLY to this app's /api/auth/* endpoints
 // (the app's secure server function). The MiniMoth API key and refresh token never reach this code.
+import { initializeApp } from 'firebase/app'
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth'
+
+const firebaseApp = initializeApp({
+  apiKey: 'AIzaSyB21D4LTMbu3F-X-GyZ_FsQt4VTNCLE2ds',
+  authDomain: 'kaizen-360.firebaseapp.com',
+  projectId: 'kaizen-360',
+  appId: '1:921924970190:web:6d5e8f55ffce97ccc3529f'
+})
 const API = '/api/auth'
 
 export class AuthError extends Error {
@@ -29,6 +38,8 @@ const FRIENDLY = {
   INTERNATIONAL_WHATSAPP_FAILED: "We couldn't deliver the code on WhatsApp. Try again.",
   INTERNATIONAL_WHATSAPP_BLOCKED: 'This number is temporarily blocked after failed deliveries. Try later.',
   FORBIDDEN_ORIGIN: 'Sign-in must be used from this site.',
+    WRONG_DOMAIN: 'Please sign in with your @ves.ac.in Google account.',
+  INVALID_GOOGLE_TOKEN: 'Google sign-in failed. Try again.',
 }
 
 async function call(path, body, method = 'POST') {
@@ -68,3 +79,20 @@ export const verifyOtp = (phone, code) => call('/verify', { phone, code })
 export const restoreSession = () => call('/session')
 export const validateToken = (access_token) => call('/validate', { access_token })
 export const logout = (access_token) => call('/logout', { access_token })
+export async function googleSignIn() {
+  const fbAuth = getAuth(firebaseApp)
+  const provider = new GoogleAuthProvider()
+  provider.setCustomParameters({ hd: 'ves.ac.in', prompt: 'select_account' })
+  let result
+  try {
+    result = await signInWithPopup(fbAuth, provider)
+  } catch (e) {
+    throw new AuthError('GOOGLE_CANCELLED', 'Google sign-in was cancelled or blocked. Allow popups and try again.')
+  }
+  try {
+    const idToken = await result.user.getIdToken()
+    return await call('/google', { idToken })
+  } finally {
+    signOut(fbAuth).catch(() => {})
+  }
+}

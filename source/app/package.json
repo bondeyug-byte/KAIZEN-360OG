@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "fflate": "^0.8.2",
+    "firebase": "^13.1.0",
     "leaflet": "^1.9.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",

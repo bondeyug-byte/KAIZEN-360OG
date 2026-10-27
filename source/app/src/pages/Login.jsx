@@ -67,7 +67,17 @@ export default function Login({ next = '/' }) {
       if (['OTP_NOT_FOUND', 'VERIFY_RATE_LIMITED'].includes(err.code)) setStep('phone')
     } finally { setBusy(false) }
   }
-
+  const googleLogin = async () => {
+    setError('')
+    setBusy(true)
+    try {
+      const r = await auth.googleSignIn()
+      completeOtpLogin(r)
+      window.location.hash = next
+    } catch (err) {
+      setError(err.message)
+    } finally { setBusy(false) }
+  }
   return (
     <div className="app-bg grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
       <section className="relative hidden overflow-hidden p-10 text-white lg:flex lg:flex-col lg:justify-between" style={{ backgroundImage: `linear-gradient(180deg, rgba(8,24,18,.55), rgba(8,24,18,.25) 45%, rgba(8,24,18,.7)), url(${heroImg})`, backgroundSize: 'cover', backgroundPosition: '62% center' }}>
@@ -90,7 +100,12 @@ export default function Login({ next = '/' }) {
         </div>
         <p className="-mt-2 text-right text-[12.5px]">{portal === 'organiser' ? <button className="font-semibold text-maroon" onClick={() => { setPortal('student'); history.replaceState(null, '', '#/login?role=student') }}>← Back to the four portals</button> : <button className="font-semibold text-maroon" onClick={() => { setPortal('organiser'); history.replaceState(null, '', '#/login?role=organiser') }}>Council / Club event desk (demo) →</button>}</p>
         {session.message && <p role="alert" className="rounded-xl bg-[#FBEDEA] px-3 py-2 text-sm text-bad">{session.message}</p>}
-
+        {portal === 'student' && <div className="rounded-xl border border-line bg-surface p-5">
+          <b className="text-[15px]">Student Google sign-in</b>
+          <p className="mb-3 mt-1 text-sm text-muted">Use your college account ending in @ves.ac.in.</p>
+          <Button type="button" onClick={googleLogin} disabled={busy}>{busy ? 'Please wait…' : 'Continue with Google'}</Button>
+          {error && <p role="alert" className="mt-2 text-sm text-bad">{error}</p>}
+        </div>}
         {portal !== 'organiser' && <div className={cx('rounded-xl border border-line bg-surface p-5', !realAvailable && 'opacity-95')}>
           <div className="mb-3 flex items-center justify-between gap-2">
             <b className="text-[15px]">Phone OTP (MiniMoth)</b>
