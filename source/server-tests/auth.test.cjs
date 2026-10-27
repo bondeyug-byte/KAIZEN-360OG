@@ -4,7 +4,7 @@
 process.env.SESSION_SECRET = 'test-session-secret-0123456789-abcdefgh'; process.env.DATABASE_URL = 'postgres://u:p@h.example/db';
 process.env.HOD_EMAILS = 'hod.cmpn@ves.ac.in=CMPN';
 const FB = { FIREBASE_PROJECT_ID: 'campus360-test', FIREBASE_WEB_API_KEY: 'test-web-key', FIREBASE_AUTH_DOMAIN: 'campus360-test.firebaseapp.com', FIREBASE_APP_ID: '1:1:web:1' };
-Object.assign(process.env, FB);
+Object.assign(process.env, FB, { GMAIL_USER: 'campus360.test@gmail.com', GMAIL_APP_PASSWORD: 'test-app-password' });
 const path = require('path'), crypto = require('crypto'), assert = require('assert');
 const API = process.env.API_DIR || path.join(__dirname, '../../api');
 const { PGlite } = require('@electric-sql/pglite');
@@ -24,7 +24,17 @@ function token(claims = {}, { kid = 'k1', alg = 'RS256', key = privateKey } = {}
 }
 const mkRes = (ok) => ({ h: {}, setHeader(k, v) { this.h[k.toLowerCase()] = v; }, status(c) { this.c = c; return this; }, json(b) { ok({ status: this.c, body: b, headers: this.h }); } });
 const authCall = (route, { method = 'POST', body = {}, cookie = '', origin } = {}) => new Promise((ok) => auth({ method, query: { route }, url: '/api/auth/' + route, headers: { cookie, host: 'campus.test', 'x-forwarded-for': '10.0.' + Math.floor(Math.random() * 250) + '.' + Math.floor(Math.random() * 250), ...(origin ? { origin } : {}) }, body }, mkRes(ok)));
-const google = (email, portal = 'student', claims = {}, opts) => authCall('google', { body: { idToken: token({ email, ...claims }, opts), portal } });
+// Emails are captured instead of sent (the real sender is nodemailer over Gmail)
+const inbox = []; auth._setMailer(async (to, code) => { inbox.push({ to, code }); })
+const pendingOf = (r) => [].concat(r.headers['set-cookie'] || []).find((c) => c.startsWith('c360_pending=') && !c.includes('Max-Age=0'))?.split(';')[0]
+const step1 = (email, portal = 'student', claims = {}, opts) => authCall('google', { body: { idToken: token({ email, ...claims }, opts), portal } });
+/** Google, then the emailed code: the full sign-in. A refusal at either step is returned as-is. */
+async function google(email, portal = 'student', claims = {}, opts) {
+  const r = await step1(email, portal, claims, opts)
+  if (r.status !== 200 || !r.body.otpRequired) return r
+  const mail = inbox.filter((m) => m.to === String(email).toLowerCase()).at(-1)
+  return authCall('otp', { body: { code: mail.code }, cookie: pendingOf(r) })
+}
 const cookieOf = (r) => [].concat(r.headers['set-cookie'] || []).find((c) => c.startsWith('c360_session=') && !c.includes('Max-Age=0'))?.split(';')[0]
 const appCall = (cookie, method, route, body, query = {}) => new Promise((ok) => app({ method, query: { ...query, route }, url: '/api/app/' + route, headers: { cookie }, body }, mkRes(ok)));
 const C = (email) => sessionCookie(email).split(';')[0];
@@ -35,9 +45,9 @@ const t = async (name, fn) => { try { await fn(); pass++; console.log('PASS', na
   const pg = new PGlite(); db._setClient((x, p) => pg.query(x, p).then((r) => r.rows)); await db.ensureSchema();
 
   await t('12. missing settings: health names what is missing (never values) and sign-in refuses clearly', async () => {
-    const saved = { ...process.env }; delete process.env.FIREBASE_PROJECT_ID; delete process.env.SESSION_SECRET
+    const saved = { ...process.env }; delete process.env.GMAIL_APP_PASSWORD; delete process.env.SESSION_SECRET
     const h = (await authCall('health', { method: 'GET' })).body
-    assert.equal(h.configured, false); assert.deepEqual(h.missing.sort(), ['FIREBASE_PROJECT_ID', 'SESSION_SECRET']); assert.equal(h.firebase, null)
+    assert.equal(h.configured, false); assert.deepEqual(h.missing.sort(), ['GMAIL_APP_PASSWORD', 'SESSION_SECRET'])
     assert.ok(!JSON.stringify(h).includes('test-session-secret'))
     const r = await google('a@ves.ac.in'); assert.equal(r.status, 503); assert.equal(r.body.code, 'CONFIG_MISSING')
     Object.assign(process.env, saved)
@@ -141,6 +151,49 @@ const t = async (name, fn) => { try { await fn(); pass++; console.log('PASS', na
     assert.equal((await authCall('google', { body: { idToken: token({ email: 'a@ves.ac.in' }), portal: 'student' }, origin: 'https://evil.example' })).body.code, 'FORBIDDEN_ORIGIN')
     assert.equal((await appCall('c360_session=eyJlIjoiaG9kLmNtcG5AdmVzLmFjLmluIn0.forged', 'GET', 'me')).status, 401)
     assert.equal((await appCall('mm_phone=%2B919100000001.' + 'f'.repeat(32), 'GET', 'me')).status, 401) // old phone cookie never accepted
+  })
+  await t('emailed code: no session after Google alone; the code goes to the same verified email', async () => {
+    const before = inbox.length
+    const r = await step1('code.check@ves.ac.in')
+    assert.equal(r.status, 200); assert.equal(r.body.otpRequired, true); assert.equal(r.body.email, 'co•••@ves.ac.in')
+    assert.equal(cookieOf(r), undefined) // no session cookie yet
+    assert.equal(inbox.length, before + 1); assert.equal(inbox.at(-1).to, 'code.check@ves.ac.in'); assert.match(inbox.at(-1).code, /^\d{6}$/)
+    const pc = pendingOf(r); assert.match([].concat(r.headers['set-cookie']).find((c) => c.startsWith('c360_pending=')), /HttpOnly; Secure; SameSite=Strict; Path=\/api\/auth; Max-Age=600/)
+    assert.ok(!Buffer.from(pc.split('=')[1], 'base64url').toString().includes(inbox.at(-1).code)) // the code itself isn't in the cookie
+  })
+  await t('emailed code: wrong, malformed, missing or expired codes are refused; too many wrong tries are blocked', async () => {
+    const r = await step1('code.wrong@ves.ac.in'); const pc = pendingOf(r), right = inbox.at(-1).code
+    const bad = right === '000000' ? '111111' : '000000'
+    assert.equal((await authCall('otp', { body: { code: bad }, cookie: pc })).body.code, 'INVALID_OTP')
+    assert.equal((await authCall('otp', { body: { code: '12ab' }, cookie: pc })).body.code, 'INVALID_OTP_CODE')
+    assert.equal((await authCall('otp', { body: { code: right } })).body.code, 'OTP_NOT_FOUND') // no pending cookie
+    const raw = JSON.parse(Buffer.from(pc.split('=')[1], 'base64url')); raw.x = now() - 1
+    assert.equal((await authCall('otp', { body: { code: right }, cookie: 'c360_pending=' + Buffer.from(JSON.stringify(raw)).toString('base64url') })).body.code, 'OTP_NOT_FOUND')
+    for (let i = 0; i < 5; i++) await authCall('otp', { body: { code: bad }, cookie: pc })
+    assert.equal((await authCall('otp', { body: { code: right }, cookie: pc })).body.code, 'VERIFY_RATE_LIMITED')
+  })
+  await t('emailed code: the pending cookie can’t be edited to another email or portal', async () => {
+    const r = await step1('code.swap@ves.ac.in'); const pc = pendingOf(r), right = inbox.at(-1).code
+    const raw = JSON.parse(Buffer.from(pc.split('=')[1], 'base64url'))
+    for (const change of [{ e: 'hod.cmpn@ves.ac.in' }, { p: 'hod' }]) {
+      const forged = 'c360_pending=' + Buffer.from(JSON.stringify({ ...raw, ...change })).toString('base64url')
+      assert.equal((await authCall('otp', { body: { code: right }, cookie: forged })).body.code, 'INVALID_OTP')
+    }
+    const ok = await authCall('otp', { body: { code: right }, cookie: pc }); assert.equal(ok.status, 200); assert.ok(cookieOf(ok))
+  })
+  await t('emailed code: refused accounts never get a code (Gmail on Student tab, unlinked parent)', async () => {
+    const before = inbox.length
+    assert.equal((await step1('x@gmail.com')).body.code, 'NOT_INSTITUTIONAL'); assert.equal((await step1('y@gmail.com', 'parent')).body.code, 'NOT_PARENT')
+    assert.equal(inbox.length, before)
+  })
+  await t('emailed code: mail failure gives a clear error and no session', async () => {
+    auth._setMailer(async () => { throw Object.assign(new Error('smtp down'), { code: 'EAUTH' }) })
+    const r = await step1('mailfail@ves.ac.in'); assert.equal(r.status, 502); assert.equal(r.body.code, 'EMAIL_FAILED'); assert.equal(cookieOf(r), undefined)
+    auth._setMailer(async (to, code) => { inbox.push({ to, code }) })
+  })
+  await t('EMAIL_OTP=off: Google alone starts the session (switch kept for local testing)', async () => {
+    process.env.EMAIL_OTP = 'off'; const r = await step1('nocode@ves.ac.in'); delete process.env.EMAIL_OTP
+    assert.equal(r.status, 200); assert.ok(cookieOf(r))
   })
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0)
 })().catch((e) => { console.error(e); process.exit(1) })

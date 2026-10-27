@@ -2,7 +2,7 @@ import heroImg from '../assets/campus-hero.jpg'
 import { useEffect, useState } from 'react'
 import { useApp } from '../store/AppContext.jsx'
 import { Brand } from '../components/Layout.jsx'
-import { Badge, Spinner, cx } from '../components/ui.jsx'
+import { Badge, Spinner, cx, inputCls } from '../components/ui.jsx'
 import * as auth from '../lib/auth.js'
 import { CLASS_LABEL } from '../data/config.js'
 import { demoIdsFor, TRUSTED_DEMO, ROLE_LABEL } from '../lib/roles.js'
@@ -29,8 +29,16 @@ export default function Login({ next = '/' }) {
   useEffect(() => { const on = () => setPortal(fromHash()); window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on) }, []) // eslint-disable-line
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // Step 2: the 6-digit code emailed to the Google account ({ email: masked, portal } while waiting)
+  const [codeStep, setCodeStep] = useState(() => auth.takeCodeStep())
+  const [code, setCode] = useState('')
   const ready = server.available && server.configured
-  const pick = (r) => { setPortal(r); setError(''); history.replaceState(null, '', `#/login?role=${r}`) }
+  const pick = (r) => { setPortal(r); setError(''); setCodeStep(null); setCode(''); history.replaceState(null, '', `#/login?role=${r}`) }
+  const enter = (r) => {
+    completeGoogleLogin(r)
+    // The server decides the role; each role lands on its own portal.
+    window.location.hash = r.role === 'hod' ? '/hod' : r.role === 'parent' ? '/parent' : r.role === 'teacher' ? '/' : safeNext(next)
+  }
 
   const signIn = async () => {
     if (busy) return
@@ -38,11 +46,22 @@ export default function Login({ next = '/' }) {
     try {
       const r = await auth.signInWithGoogle(portal)
       if (r.redirected) return // the page is going to Google and back
-      completeGoogleLogin(r)
-      // The server decides the role; each role lands on its own portal.
-      window.location.hash = r.role === 'hod' ? '/hod' : r.role === 'parent' ? '/parent' : r.role === 'teacher' ? '/' : safeNext(next)
+      if (r.otpRequired) { setCodeStep({ email: r.email, portal: r.portal || portal }); setCode(''); return }
+      enter(r)
     } catch (err) {
       if (err.code !== 'CANCELLED') setError(err.message)
+    } finally { setBusy(false) }
+  }
+  const submitCode = async (e) => {
+    e.preventDefault()
+    if (busy) return
+    setError('')
+    if (!/^\d{6}$/.test(code)) { setError('The code is 6 digits.'); return }
+    setBusy(true)
+    try { enter(await auth.verifyEmailCode(code)) }
+    catch (err) {
+      setError(err.message)
+      if (['OTP_NOT_FOUND', 'VERIFY_RATE_LIMITED'].includes(err.code) || err.status === 403) { setCodeStep(null); setCode('') }
     } finally { setBusy(false) }
   }
 
@@ -78,13 +97,25 @@ export default function Login({ next = '/' }) {
                 {server.available && server.missing?.length > 0 && <p className="mt-1 text-[12px] text-muted">For the site admin: missing server settings {server.missing.join(', ')}. See docs/GOOGLE-SIGN-IN.md.</p>}
               </div>
             ) : (
-              <>
+              codeStep ? (
+                <form onSubmit={submitCode} noValidate className="flex flex-col gap-3">
+                  <p role="status" className="rounded-lg bg-[#E7F4EC] px-3 py-2 text-[13.5px] text-ok">We emailed a 6-digit code to <b>{codeStep.email}</b>. It expires in 10 minutes. Check your inbox (and spam).</p>
+                  <label htmlFor="c360-code" className="text-[13px] font-medium text-[#3B4048]">6-digit code</label>
+                  <input id="c360-code" className={cx(inputCls, 'font-mono text-xl tracking-[0.4em]')} inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(ev) => setCode(ev.target.value.replace(/\D/g, ''))} disabled={busy} autoFocus />
+                  {error && <p role="alert" className="rounded-lg bg-[#FBEDEA] px-3 py-2 text-[13.5px] text-bad">{error}</p>}
+                  <button type="submit" disabled={busy} className="press min-h-[46px] rounded-lg bg-maroon px-4 text-[15px] font-semibold text-white hover:bg-maroon-dark disabled:opacity-70">{busy ? 'Checking…' : 'Verify and sign in'}</button>
+                  <div className="flex justify-between text-[13px]">
+                    <button type="button" className="min-h-[40px] font-semibold text-maroon" onClick={() => { setCodeStep(null); setCode(''); setError('') }}>Use a different account</button>
+                    <button type="button" className="min-h-[40px] font-semibold text-maroon" disabled={busy} onClick={() => { setCodeStep(null); setCode(''); signIn() }}>Send a new code</button>
+                  </div>
+                </form>
+              ) : <>
                 <button type="button" onClick={signIn} disabled={busy} aria-busy={busy}
                   className="press flex min-h-[48px] w-full items-center justify-center gap-3 rounded-lg border border-line2 bg-surface px-4 text-[15px] font-semibold text-ink hover:border-[#9DB5A4] disabled:cursor-wait disabled:opacity-70">
                   <GoogleMark />{busy ? 'Waiting for Google…' : 'Continue with Google'}
                 </button>
                 {error && <p role="alert" className="mt-3 rounded-lg bg-[#FBEDEA] px-3 py-2 text-[13.5px] text-bad">{error}</p>}
-                <p className="mt-3 text-[12px] text-muted">{staffPortal ? 'Only …@ves.ac.in accounts can open this portal, and the college assigns roles: signing in never makes you a teacher or HOD by itself.' : 'Signing in proves you own this Google account. You only see the student(s) the college confirmed for it.'}{' '}Campus360 asks Google only for your name and email address.</p>
+                <p className="mt-3 text-[12px] text-muted">{staffPortal ? 'Only …@ves.ac.in accounts can open this portal, and the college assigns roles: signing in never makes you a teacher or HOD by itself.' : 'Signing in proves you own this Google account. You only see the student(s) the college confirmed for it.'}{' '}Campus360 asks Google only for your name and email address.{server.emailCode ? ' After Google, we email you a 6-digit code to finish signing in.' : ''}</p>
               </>
             )}
             <p className="mt-3 text-[12px] text-muted">By signing in you agree to the <a href="#/terms" className="font-semibold text-maroon underline">terms</a>. See how your data is used in the <a href="#/privacy" className="font-semibold text-maroon underline">privacy notice</a> (drafts pending college review).</p>

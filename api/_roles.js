@@ -44,7 +44,8 @@ const DIVISION_RE = /^D\d[A-Z0-9]{0,4}$/; // D1ADA, D1EC, D2A, D3, D4B ...
 // Set by the college in the hosting settings. Only @ves.ac.in addresses are accepted.
 function hodEntries(env = process.env) {
   const out = [];
-  for (const raw of String(env.HOD_EMAILS || '').split(/[;\n]/)) {
+  // HOD_PHONES is the older setting's name; only its @ves.ac.in entries are used (phone numbers can't sign in any more)
+  for (const raw of `${env.HOD_EMAILS || ''};${env.HOD_PHONES || ''}`.split(/[;\n]/)) {
     const i = raw.lastIndexOf('=');
     if (i < 0) continue;
     const email = normalizeEmail(raw.slice(0, i));
@@ -54,4 +55,24 @@ function hodEntries(env = process.env) {
   return out;
 }
 
-module.exports = { normalizePhone, normalizeEmail, isInstitutional, maskIdentity, INSTITUTION_DOMAIN, hodEntries, DIVISION_RE };
+/**
+ * Teachers set in the hosting settings (TEACHER_EMAILS, or @ves.ac.in entries in the older TEACHER_PHONES):
+ * email=Name|D1ADA:Subject,D1ADB:Subject;…  Copied into the database once per account (an HOD's later removal stands).
+ */
+function teacherEntries(env = process.env) {
+  const out = [];
+  for (const raw of `${env.TEACHER_EMAILS || ''};${env.TEACHER_PHONES || ''}`.split(/[;\n]/)) {
+    const i = raw.indexOf('=');
+    if (i < 0) continue;
+    const email = normalizeEmail(raw.slice(0, i));
+    if (!email || !isInstitutional(email)) continue;
+    const rest = raw.slice(i + 1).trim(), bar = rest.indexOf('|');
+    const name = (bar >= 0 ? rest.slice(0, bar) : '').trim().slice(0, 80);
+    const teaches = (bar >= 0 ? rest.slice(bar + 1) : rest).split(',').map((x) => { const c = x.indexOf(':'); return c < 0 ? null : { division: x.slice(0, c).trim().toUpperCase(), subject: x.slice(c + 1).trim().slice(0, 80) }; })
+      .filter((t) => t && DIVISION_RE.test(t.division) && t.subject);
+    out.push({ email, name, teaches });
+  }
+  return out;
+}
+
+module.exports = { teacherEntries, normalizePhone, normalizeEmail, isInstitutional, maskIdentity, INSTITUTION_DOMAIN, hodEntries, DIVISION_RE };

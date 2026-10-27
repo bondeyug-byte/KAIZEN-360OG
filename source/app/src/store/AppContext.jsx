@@ -130,6 +130,7 @@ export function AppProvider({ children }) {
         try {
           const r = await auth.finishPendingSignIn()
           if (cancelled) return
+          if (r && r.otpRequired) { auth.rememberCodeStep(r); setSession((x) => ({ ...x, status: 'signedOut' })); window.location.hash = `/login?role=${r.portal || 'student'}`; return }
           if (r) { startSession(r); return }
         } catch (e) {
           if (!cancelled) { setSession((x) => ({ ...x, status: 'signedOut', message: e.message })); return }

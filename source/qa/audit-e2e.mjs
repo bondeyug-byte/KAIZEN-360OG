@@ -15,6 +15,11 @@ async function person(name, phone, role = 'student', viewport = { width: 1300, h
   await ctx.addInitScript((email) => { window.__e2eGoogle = async () => (await (await fetch('/__test/idtoken', { method: 'POST', body: JSON.stringify({ email }) })).json()).idToken }, E(phone))
   await p.goto(BASE + '#/login?role=' + role); await wait(x, 900)
   await p.getByRole('button', { name: 'Continue with Google' }).click(); await wait(x, 2200)
+  // step 2: the emailed 6-digit code (captured by the test server)
+  if (await p.getByLabel('6-digit code').count()) {
+    const c = await p.evaluate(async (email) => (await (await fetch('/__test/lastcode', { method: 'POST', body: JSON.stringify({ email }) })).json()).code, E(phone))
+    await p.getByLabel('6-digit code').fill(c || ''); await p.getByRole('button', { name: 'Verify and sign in' }).click(); await wait(x, 2200)
+  }
   return x
 }
 const api = (x, route, opt = {}) => x.p.evaluate(async ([route, opt]) => { const q = opt.query ? '?' + new URLSearchParams(opt.query) : ''; const r = await fetch('/api/app/' + route + q, { method: opt.method || 'GET', headers: opt.body ? { 'Content-Type': 'application/json' } : {}, body: opt.body ? JSON.stringify(opt.body) : undefined }); return { status: r.status, body: await r.json().catch(() => null) } }, [route, opt])

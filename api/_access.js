@@ -2,11 +2,12 @@
 // CR or parent link takes effect on the very next request, not at next login).
 // `who.phone` keeps its old name but now holds the identity (the lower-cased email); see api/_roles.js.
 const db = require('./_db');
-const { normalizeEmail, isInstitutional, hodEntries } = require('./_roles');
+const { normalizeEmail, isInstitutional, hodEntries, teacherEntries } = require('./_roles');
 
 /**
- * Settings → database, once per server instance: HOD_EMAILS is the only way to become HOD. Rows not in the setting
- * are deactivated. Teachers are added by their HOD in the HOD portal (there is no teacher list in the settings).
+ * Settings → database, once per server instance: HOD_EMAILS (and @ves.ac.in entries of HOD_PHONES) is the only way
+ * to become HOD; Google HOD rows not in the setting are deactivated. Teachers are added by their HOD in the HOD
+ * portal; teacher emails in TEACHER_EMAILS / TEACHER_PHONES are copied in once.
  */
 let synced = null;
 function syncFromEnv() {
@@ -16,6 +17,12 @@ function syncFromEnv() {
     for (const h of valid) await db.q(`insert into hod_assignments (phone, branch_code, active) values ($1, $2, true) on conflict (phone, branch_code) do update set active = true, updated_at = now()`, [h.email, h.branch]);
     // Only Google (email) HOD rows are managed here; rows from the earlier phone sign-in are left exactly as they are.
     await db.q(`update hod_assignments set active = false, updated_at = now() where active and position('@' in phone) > 0 and not ((phone || '=' || branch_code) = any($1::text[]))`, [valid.map((h) => `${h.email}=${h.branch}`)]);
+    for (const t of teacherEntries()) {
+      const added = await db.q(`insert into teacher_whitelist (phone, name, teaches) values ($1, $2, '[]'::jsonb) on conflict (phone) do nothing returning phone`, [t.email, t.name || 'Teacher']);
+      if (!added.length) continue; // copied once; the HOD manages them from then on
+      for (const d of t.teaches) await db.q(`insert into teacher_divisions (teacher_phone, division_code, subject) select $1, $2, $3 where exists (select 1 from divisions where code = $2) on conflict do nothing`, [t.email, d.division, d.subject]);
+      await db.q(`update teacher_whitelist w set branch_code = (select d.branch_code from teacher_divisions t join divisions d on d.code = t.division_code where t.teacher_phone = w.phone limit 1) where phone = $1`, [t.email]);
+    }
   })().catch((e) => { synced = null; throw e; });
   return synced;
 }

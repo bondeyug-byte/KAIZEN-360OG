@@ -3,7 +3,7 @@
 // tests (this route exists only in this test server).
 process.env.SESSION_SECRET = 'e2e-session-secret-0123456789-abcdefghij'; process.env.DATABASE_URL = 'postgres://u:p@h/db';
 process.env.HOD_EMAILS = 'hod.cmpn@ves.ac.in=CMPN;hod.aids@ves.ac.in=AIDS';
-Object.assign(process.env, { FIREBASE_PROJECT_ID: 'campus360-e2e', FIREBASE_WEB_API_KEY: 'e2e-web-key', FIREBASE_AUTH_DOMAIN: 'campus360-e2e.firebaseapp.com', FIREBASE_APP_ID: '1:1:web:e2e' });
+Object.assign(process.env, { GMAIL_USER: 'campus360.e2e@gmail.com', GMAIL_APP_PASSWORD: 'e2e-app-password', FIREBASE_PROJECT_ID: 'campus360-e2e', FIREBASE_WEB_API_KEY: 'e2e-web-key', FIREBASE_AUTH_DOMAIN: 'campus360-e2e.firebaseapp.com', FIREBASE_APP_ID: '1:1:web:e2e' });
 const http = require('http'), fs = require('fs'), crypto = require('crypto');
 const ROOT = process.env.ROOT || require('path').join(__dirname, '../..'), R = ROOT + '/api/';
 const { PGlite } = require('@electric-sql/pglite');
@@ -17,8 +17,9 @@ function idToken({ email, verified = true, provider = 'google.com', name = '' })
   const h = b64({ alg: 'RS256', kid: 'e2e', typ: 'JWT' }), p = b64({ iss: `https://securetoken.google.com/${pid}`, aud: pid, sub: 'g-' + crypto.createHash('sha1').update(String(email)).digest('hex').slice(0, 20), iat: t, exp: t + 3600, auth_time: t, ...(email ? { email } : {}), email_verified: verified, name, firebase: { sign_in_provider: provider } });
   return `${h}.${p}.${crypto.createSign('RSA-SHA256').update(`${h}.${p}`).sign(privateKey).toString('base64url')}`;
 }
-if (process.env.E2E_UNSET === '1') delete process.env.FIREBASE_PROJECT_ID // diagnostic test: broken config
+if (process.env.E2E_UNSET === '1') delete process.env.SESSION_SECRET // diagnostic test: broken config
 const auth = require(R + 'auth'), app = require(R + 'app'), sync = require(R + 'sync');
+const mails = []; auth._setMailer(async (to, code) => { mails.push({ to, code }) }) // emails captured, not sent
 const VH = JSON.parse(fs.readFileSync(ROOT + '/vercel.json', 'utf8')).headers[0].headers;
 const html = fs.readFileSync(process.argv[2], 'utf8');
 http.createServer((req, res) => {
@@ -27,6 +28,7 @@ http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x');
     const vres = { setHeader: (k, v) => res.setHeader(k, v), status(c) { res.statusCode = c; return this; }, json(b) { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(b)); }, end(b) { res.end(b); } };
     const parsed = body ? JSON.parse(body) : {};
+    if (url.pathname === '/__test/lastcode') { res.setHeader('content-type', 'application/json'); const m = mails.filter((x) => x.to === String(parsed.email || '').toLowerCase()).pop(); return res.end(JSON.stringify({ code: m ? m.code : null })); }
     if (url.pathname === '/__test/idtoken') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ idToken: idToken(parsed) })); }
     if (url.pathname === '/api/sync') return sync({ method: req.method, url: req.url, headers: req.headers, query: {}, body: parsed }, vres);
     const m = url.pathname.match(/^\/api\/(auth|app)\/([a-z-]+)/);

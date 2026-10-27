@@ -20,6 +20,11 @@ async function google(x, portal, email, claims = {}) {
   await x.ctx.addInitScript(([email, claims]) => { window.__e2eGoogle = async () => (await (await fetch('/__test/idtoken', { method: 'POST', body: JSON.stringify({ email, ...claims }) })).json()).idToken }, [email, claims])
   await x.p.goto(x.base + '#/login?role=' + portal); await x.p.reload(); await wait(x, 900)
   await x.p.getByRole('button', { name: 'Continue with Google' }).click(); await wait(x, 2200)
+  // step 2: the emailed 6-digit code (captured by the test server)
+  if (await x.p.getByLabel('6-digit code').count()) {
+    const c = await x.p.evaluate(async (email) => (await (await fetch('/__test/lastcode', { method: 'POST', body: JSON.stringify({ email }) })).json()).code, email)
+    await x.p.getByLabel('6-digit code').fill(c || ''); await x.p.getByRole('button', { name: 'Verify and sign in' }).click(); await wait(x, 2200)
+  }
   return { url: x.p.url(), alert: await x.p.locator('[role=alert]').first().innerText().catch(() => '') }
 }
 const person = async (name, portal, email, claims) => { const x = await browser(name); x.res = await google(x, portal, email, claims); return x }
@@ -35,6 +40,20 @@ check('COOP allows the Google popup to report back; CSP allows Firebase endpoint
 const s1 = await person('S1', 'student', 'asha.test@ves.ac.in')
 check('1. authorised @ves.ac.in account signs in (lands in onboarding, then the portal)', /#\/profile\?onboard=1/.test(s1.res.url) && !s1.res.alert, `${s1.res.url} ${s1.res.alert}`)
 check('login page shows no demo sign-in on this build', !/Demo sign-in/.test(await (async () => { const y = await browser('look'); await y.p.goto(BASE + '#/login?role=student'); await wait(y, 800); return y.p.locator('body').innerText() })()))
+// emailed code step, seen in the browser
+{ const y = await browser('code-step')
+  await y.ctx.addInitScript(() => { window.__e2eGoogle = async () => (await (await fetch('/__test/idtoken', { method: 'POST', body: JSON.stringify({ email: 'code.ui@ves.ac.in' }) })).json()).idToken })
+  await y.p.goto(BASE + '#/login?role=student'); await wait(y, 900); await y.p.getByRole('button', { name: 'Continue with Google' }).click(); await wait(y, 1800)
+  const t1 = await y.p.locator('body').innerText()
+  const noSession = (await api(y, 'me')).status === 401
+  await y.p.getByLabel('6-digit code').fill('000000'); await y.p.getByRole('button', { name: 'Verify and sign in' }).click(); await wait(y, 1200)
+  const t2 = await y.p.locator('body').innerText()
+  const c = await y.p.evaluate(async () => (await (await fetch('/__test/lastcode', { method: 'POST', body: JSON.stringify({ email: 'code.ui@ves.ac.in' }) })).json()).code)
+  const wrongShown = c === '000000' || /That code isn’t right/.test(t2)
+  await y.p.getByLabel('6-digit code').fill(c); await y.p.getByRole('button', { name: 'Verify and sign in' }).click(); await wait(y, 2200)
+  check('emailed code: after Google the page asks for the code sent to the masked email; no session until it is entered', /We emailed a 6-digit code to co•••@ves\.ac\.in/.test(t1) && noSession, t1.slice(0, 300))
+  check('emailed code: a wrong code is refused with a clear message; the right one signs in', wrongShown && (await api(y, 'me')).status === 200 && !/#\/login/.test(y.p.url()), t2.slice(0, 300) + ' ' + y.p.url())
+}
 // 2–5 · refused accounts never get a session
 for (const [n, email, claims, re] of [
   ['2. personal Gmail is refused on the Student portal', 'someone@gmail.com', {}, /college Google account/],
@@ -124,7 +143,7 @@ check('10. after sign-out, a protected route shows the sign-in page (no attendan
 if (BAD) {
   const y = await browser('bad-config', undefined, BAD); await y.p.goto(BAD + '#/login?role=student'); await wait(y, 1200)
   const t = await y.p.locator('main, body').first().innerText()
-  check('12. missing Firebase setting shows a clear message naming the setting (no button)', /being set up/.test(t) && /missing server settings FIREBASE_PROJECT_ID/.test(t) && !(await y.p.getByRole('button', { name: 'Continue with Google' }).count()), t.slice(0, 300))
+  check('12. a missing server setting shows a clear message naming the setting (no button)', /being set up/.test(t) && /missing server settings SESSION_SECRET/.test(t) && !(await y.p.getByRole('button', { name: 'Continue with Google' }).count()), t.slice(0, 300))
 }
 check('no CSP violations', csp.length === 0, csp.join(' | '))
 const errs = people.flatMap((x) => x.errs.map((e) => x.name + ': ' + e))

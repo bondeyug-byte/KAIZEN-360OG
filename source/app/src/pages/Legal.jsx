@@ -42,6 +42,7 @@ export function Privacy() {
         <H>Service providers that process data</H>
         <L items={[
           'Vercel (hosting and server functions).',
+          'Gmail (Google), which delivers the 6-digit sign-in code to your email address.',
           'Neon (the database).',
           'Google (Firebase Authentication, for “Continue with Google”; it handles your Google sign-in and tells Campus360 your verified email and name).',
           'Google Gemini (only if the college enables the online assistant; it receives your assistant messages and the details needed to answer).',

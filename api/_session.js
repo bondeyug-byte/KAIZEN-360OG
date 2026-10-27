@@ -30,7 +30,7 @@ function clearCookies() {
 
 /** { email, iat } from a valid, unexpired session cookie, or null. */
 function getSession(req, nowSec = Math.floor(Date.now() / 1000)) {
-  if (secret().length < 32) return null; // not configured: nobody is signed in
+  if (!secret()) return null; // not configured: nobody is signed in
   const raw = readCookie(req, COOKIE);
   if (!raw) return null;
   const i = raw.lastIndexOf('.');

@@ -23,6 +23,12 @@ const FRIENDLY = {
   RATE_LIMITED: 'Too many sign-in attempts. Wait a few minutes and try again.',
   FORBIDDEN_ORIGIN: 'Sign-in must be used from this site.',
   TOKEN_EXPIRED: 'Your Google sign-in expired. Try again.',
+  EMAIL_FAILED: 'We couldn’t send the code. Try again in a moment.',
+  OTP_RATE_LIMITED: 'Too many codes sent to this email. Wait 10 minutes and try again.',
+  VERIFY_RATE_LIMITED: 'Too many wrong attempts. Continue with Google again in 10 minutes.',
+  INVALID_OTP_CODE: 'The code is 6 digits.',
+  INVALID_OTP: 'That code isn’t right. Check the email and try again.',
+  OTP_NOT_FOUND: 'That code has expired. Continue with Google again to get a new one.',
 }
 // Firebase client error codes → what the person should do.
 const FIREBASE = {
@@ -52,14 +58,14 @@ async function call(path, body, method = 'POST') {
   if (!type.includes('application/json')) throw new AuthError('SERVER_UNAVAILABLE', 'The sign-in server isn’t available here. Google sign-in needs the deployed app and its server functions.')
   let data = null
   try { data = await res.json() } catch { data = null }
-  if (!res.ok) throw new AuthError(data?.code || `HTTP_${res.status}`, FRIENDLY[data?.code] || data?.error || 'Something went wrong. Try again.')
+  if (!res.ok) { const e = new AuthError(data?.code || `HTTP_${res.status}`, FRIENDLY[data?.code] || data?.error || 'Something went wrong. Try again.'); e.status = res.status; throw e }
   return data
 }
 
 let health = null
 /** { available, configured, missing[], firebase|null, institutionDomain } */
 export async function serverAvailable() {
-  try { const r = await call('/health', null, 'GET'); health = r; return { available: true, configured: !!r.configured, missing: r.missing || [], firebase: r.firebase || null, institutionDomain: r.institutionDomain || 'ves.ac.in' } }
+  try { const r = await call('/health', null, 'GET'); health = r; return { available: true, configured: !!r.configured, missing: r.missing || [], firebase: r.firebase || null, emailCode: !!r.emailCode, institutionDomain: r.institutionDomain || 'ves.ac.in' } }
   catch (e) { return { available: false, configured: false, missing: [], reason: e.message } }
 }
 
@@ -134,6 +140,13 @@ export async function finishPendingSignIn() {
   } catch (e) { throw toAuthError(e) }
 }
 export const pendingRedirectPortal = () => { try { return JSON.parse(sessionStorage.getItem(PENDING) || 'null')?.portal || null } catch { return null } }
+
+/** Second step: the 6-digit code emailed to the Google account. Resolves with the signed-in summary. */
+export const verifyEmailCode = (code) => call('/otp', { code: String(code || '').trim() })
+// A code step waiting after a redirect sign-in (this tab only), so the sign-in page can show the code box.
+const OTP_WAIT = 'c360.codeWaiting'
+export const rememberCodeStep = (r) => { try { sessionStorage.setItem(OTP_WAIT, JSON.stringify({ portal: r.portal, email: r.email, at: Date.now() })) } catch { /* ignore */ } }
+export const takeCodeStep = () => { try { const v = JSON.parse(sessionStorage.getItem(OTP_WAIT) || 'null'); sessionStorage.removeItem(OTP_WAIT); return v && Date.now() - v.at < 10 * 60000 ? v : null } catch { return null } }
 
 export const restoreSession = () => call('/session')
 export const logout = () => call('/logout')
