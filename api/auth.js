@@ -13,6 +13,8 @@ const crypto = require('crypto');
 const API_BASE = 'https://api.minimoth.dev';
 const REFRESH_COOKIE = 'mm_refresh';
 const PHONE_COOKIE = 'mm_phone';
+const GOOGLE_COOKIE = 'g_email';
+const GOOGLE_DOMAIN = '@ves.ac.in';
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 10; // 10 days
 
 /* ---------- helpers ---------- */
@@ -29,8 +31,7 @@ const cookie = (name, value, path = '/api/auth') =>
   `${name}=${value}; HttpOnly; Secure; SameSite=Strict; Path=${path}; Max-Age=${COOKIE_MAX_AGE}`;
 const expired = (name, path = '/api/auth') =>
   `${name}=; HttpOnly; Secure; SameSite=Strict; Path=${path}; Max-Age=0`;
-const clearAll = () => [expired(REFRESH_COOKIE), expired(PHONE_COOKIE, '/api'), expired(PHONE_COOKIE)];
-
+const clearAll = () => [expired(REFRESH_COOKIE), expired(PHONE_COOKIE, '/api'), expired(PHONE_COOKIE), expired(GOOGLE_COOKIE, '/api')];
 function readCookie(req, name) {
   const header = req.headers.cookie || '';
   for (const part of header.split(';')) {
@@ -44,6 +45,9 @@ function readCookie(req, name) {
 const sign = (phone) =>
   crypto.createHmac('sha256', process.env.MINIMOTH_API_KEY).update('phone:' + phone).digest('hex').slice(0, 32);
 const phoneCookie = (phone) => cookie(PHONE_COOKIE, `${encodeURIComponent(phone)}.${sign(phone)}`, '/api');
+const signEmail = (email) =>
+  crypto.createHmac('sha256', process.env.MINIMOTH_API_KEY).update('email:' + email).digest('hex').slice(0, 32);
+const emailCookie = (email) => cookie(GOOGLE_COOKIE, `${encodeURIComponent(email)}.${signEmail(email)}`, '/api');
 function readPhone(req) {
   const raw = readCookie(req, PHONE_COOKIE);
   if (!raw) return null;
@@ -165,7 +169,33 @@ module.exports = async (req, res) => {
       }
     }
     body = body || {};
+          // POST /google { idToken }: verify a Firebase Google sign-in, @ves.ac.in only
+    if (route === 'google') {
+      const idToken = String(body.idToken || '');
+      if (!idToken) return fail(res, 400, 'BAD_REQUEST', 'Missing token.');
+      if (!(await allowed(`google:${clientIp(req)}`, 20, 600))) {
+        return fail(res, 429, 'RATE_LIMITED', 'Too many attempts. Wait 10 minutes and try again.');
+      }
+      // Google verifies the token for us; no extra library needed.
+      const r = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${process.env.FIREBASE_API_KEY}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }) }
+      );
+      const data = await r.json().catch(() => ({}));
+      const u = data.users && data.users[0];
+      if (!r.ok || !u) return fail(res, 401, 'INVALID_GOOGLE_TOKEN', 'Google sign-in failed. Try again.');
 
+      const email = String(u.email || '').toLowerCase();
+      const viaGoogle = (u.providerUserInfo || []).some((p) => p.providerId === 'google.com');
+      if (!viaGoogle || !u.emailVerified || !email.endsWith(GOOGLE_DOMAIN)) {
+        return fail(res, 403, 'WRONG_DOMAIN', 'Please use your @ves.ac.in account.');
+      }
+      return respond(
+        res, 200,
+        { ok: true, email, name: u.displayName || null, role: 'student', hod: null, teacher: null, parent: null, admin: false },
+        [emailCookie(email)]
+      );
+    }
     // POST /send { phone }
     if (route === 'send') {
       const phone = normalizePhone(body.phone);
