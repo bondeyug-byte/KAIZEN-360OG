@@ -37,7 +37,6 @@ const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0
   })
   await t('a student in a class can ask to change division, with a reason; validation errors are clear', async () => {
     assert.equal((await call(S1, 'POST', 'join-requests', { division: 'D2A', reason: 'wrong one' })).body.code, 'SAME_DIVISION')
-    assert.equal((await call(S1, 'POST', 'join-requests', { division: 'D1ADA', reason: 'other branch' })).body.code, 'OTHER_BRANCH_OR_YEAR')
     assert.equal((await call(S1, 'POST', 'join-requests', { division: 'D2B' })).body.code, 'REASON_REQUIRED')
     assert.equal((await call(S1, 'POST', 'join-requests', { division: 'NOPE', reason: 'abcdef' })).body.code, 'UNKNOWN_DIVISION')
     const r = await call(S1, 'POST', 'join-requests', { division: 'D2B', reason: 'Picked the wrong division at sign-up' })

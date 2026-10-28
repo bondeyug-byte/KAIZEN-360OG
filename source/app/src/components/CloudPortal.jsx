@@ -100,12 +100,20 @@ export function MyClass() {
       ) : (
         <form onSubmit={(ev) => { ev.preventDefault(); if (division) send() }} className="mt-2 flex flex-col gap-3">
           {jr?.status === 'rejected' && <p className="text-[13.5px]"><Badge tone="bad">Not approved</Badge> for {jr.division_code}{jr.note ? `: “${jr.note}”` : ''}. Check your division and request again.</p>}
-          <Loading s={cat}>{cat.data && <DivisionPicker catalog={cat.data} mode="single" value={division} onChange={setDivision} idPrefix="join" />}</Loading>
+          <Loading s={cat}>{cat.data && <DivisionPicker catalog={ownBranch(cat.data, session.setup)} mode="single" value={division} onChange={setDivision} idPrefix="join" />}</Loading>
+          {session.setup && <p className="text-[12.5px] text-muted">Showing {session.setup.branch} divisions for your year, from your profile. Wrong branch or year? <a className="font-semibold text-maroon underline" href="#/setup?edit=1">Correct your profile</a> first.</p>}
           <div><Button type="submit" disabled={!division || busy}>{busy ? 'Sending…' : division ? `Request to join ${division}` : 'Choose your division'}</Button></div>
         </form>)}
       <p className="mt-4 text-[12.5px] text-muted">Google sign-in proves you own your college account, not that you are in that class, so a teacher, your class rep or the HOD approves each request.</p>
     </Card>
   )
+}
+
+/** A first join offers only the branch and year from "Set up your profile" (the server enforces the same). */
+function ownBranch(cat, setup) {
+  if (!setup?.branch) return cat
+  const years = (cat.years || []).filter((y) => y.level === Number(setup.yearLevel))
+  return { ...cat, branches: (cat.branches || []).filter((b) => b.code === setup.branch), years, divisions: (cat.divisions || []).filter((d) => d.branch_code === setup.branch && years.some((y) => y.id === d.year_id)) }
 }
 
 /* ---------------- Student: change division (request → target class teacher or HOD approves) ---------------- */
@@ -118,8 +126,12 @@ function ChangeDivision({ e, jr, cat, busy, setBusy }) {
   const pending = jr?.status === 'pending' && jr.kind === 'transfer' ? jr : null
   const last = !pending && jr?.kind === 'transfer' && jr.status === 'rejected' ? jr : null
   const cur = (cat.data?.divisions || []).find((d) => d.code === e.division_code)
-  // only divisions of the same branch and year; the server checks this again
-  const options = (cat.data?.divisions || []).filter((d) => cur && d.code !== e.division_code && d.branch_code === cur.branch_code && d.year_id === cur.year_id)
+  // any other division; another branch or year is decided by that class's teacher or that branch's HOD (server-checked)
+  const yearLabel = (id) => (cat.data?.years || []).find((y) => y.id === id)?.label || id
+  const options = (cat.data?.divisions || []).filter((d) => cur && d.code !== e.division_code)
+    .sort((a, b) => (a.branch_code === cur?.branch_code ? 0 : 1) - (b.branch_code === cur?.branch_code ? 0 : 1) || a.branch_code.localeCompare(b.branch_code) || a.code.localeCompare(b.code))
+  const picked = options.find((d) => d.code === to)
+  const crossing = picked && cur && (picked.branch_code !== cur.branch_code || picked.year_id !== cur.year_id)
   const after = async () => { await refreshAccount(); refreshTimetable() }
   const submit = busyWrap(setBusy, async () => {
     setErr('')
@@ -141,13 +153,13 @@ function ChangeDivision({ e, jr, cat, busy, setBusy }) {
       ) : !open ? (
         <div className="mt-1 text-[13.5px]">
           {last && <p className="mb-2"><Badge tone="bad">Not approved</Badge> move to {last.division_code}{last.note ? `: “${last.note}”` : ''}</p>}
-          <p className="text-[13px] text-muted">Chose the wrong division? Ask to move to another division of your branch and year.</p>
+          <p className="text-[13px] text-muted">Chose the wrong division, branch or year? Ask to move. The teacher of the new class (or that branch’s HOD) approves.</p>
           <Button className="mt-2" size="sm" variant="secondary" onClick={() => setOpen(true)}>Request a change</Button>
         </div>
       ) : (
         <form className="mt-2 flex flex-col gap-3" onSubmit={(ev) => { ev.preventDefault(); submit() }} noValidate>
-          <Loading s={cat}>{!options.length ? <p className="text-[13px] text-muted">There is no other division in your branch and year. For a branch or year change, contact your HOD.</p> : (
-            <Field label="Move to">{(id) => <select id={id} className={inputCls} value={to} onChange={(ev) => setTo(ev.target.value)}><option value="">Choose a division</option>{options.map((d) => <option key={d.code} value={d.code}>{d.code}{d.name ? ` · ${d.name}` : ''}</option>)}</select>}</Field>)}</Loading>
+          <Loading s={cat}>{!options.length ? <p className="text-[13px] text-muted">There is no other division set up yet.</p> : (
+            <Field label="Move to" hint={crossing ? `This changes your branch/year to ${picked.branch_code} ${yearLabel(picked.year_id)}. Your profile is updated when it’s approved.` : undefined}>{(id) => <select id={id} className={inputCls} value={to} onChange={(ev) => setTo(ev.target.value)}><option value="">Choose a division</option>{options.map((d) => <option key={d.code} value={d.code}>{d.code} · {d.branch_code} {yearLabel(d.year_id)}{d.branch_code !== cur?.branch_code ? ' (other branch)' : ''}</option>)}</select>}</Field>)}</Loading>
           <Field label="Reason" hint="Your teacher sees this. Class reps don’t.">{(id) => <textarea id={id} className={cx(inputCls, 'min-h-[72px] py-2')} maxLength={300} value={reason} onChange={(ev) => setReason(ev.target.value)} placeholder="For example: I selected D2A by mistake; my roll number is in D2B." />}</Field>
           {err && <p role="alert" className="text-[13px] text-bad">{err}</p>}
           <div className="flex gap-2"><Button type="submit" size="sm" disabled={busy || !options.length}>{busy ? 'Sending…' : 'Send request'}</Button><Button type="button" size="sm" variant="ghost" onClick={() => { setOpen(false); setErr('') }}>Cancel</Button></div>

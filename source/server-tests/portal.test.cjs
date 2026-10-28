@@ -366,5 +366,22 @@ const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000
     assert.equal((await call(PARENT, 'POST', 'event-register', { eventId: ev })).status, 403)
   })
 
+  /* ---------- branch rules for joining and moving ---------- */
+  await t('a first join must match the branch and year in the profile (CMPN profile can’t join an AIDS class)', async () => {
+    const r = await call(FRESH, 'POST', 'join-requests', { division: 'D1ADA' })
+    assert.equal(code(r), 'PROFILE_MISMATCH'); assert.match(r.body.error, /your profile says CMPN/)
+    assert.equal((await run(`select count(*)::int as n from join_requests j join accounts a on a.id = j.student_id where a.phone = $1`, [E(FRESH)]))[0].n, 0)
+    ok(await call(FRESH, 'POST', 'join-requests', { division: 'D2B' })) // own branch and year: fine
+  })
+  await t('an enrolled student can ask to move to another branch; only the target class teacher or that branch’s HOD decides; the profile follows', async () => {
+    const r = ok(await call(S1, 'POST', 'join-requests', { division: 'D1ADA', reason: 'My branch is AIDS, joined CMPN by mistake' }))
+    assert.equal(r.joinRequest.kind, 'transfer'); assert.equal(r.joinRequest.from_division, 'D2A')
+    assert.equal((await call(TA, 'POST', 'join-decision', { ids: [r.joinRequest.id], decision: 'approve' })).body.results[0].ok, false) // old-class teacher
+    assert.equal((await call(HOD, 'POST', 'join-decision', { ids: [r.joinRequest.id], decision: 'approve' })).body.results[0].ok, false) // CMPN HOD
+    const okd = ok(await call(HOD_AI, 'POST', 'join-decision', { ids: [r.joinRequest.id], decision: 'approve' })); assert.equal(okd.results[0].ok, true, JSON.stringify(okd))
+    const me = ok(await call(S1, 'GET', 'me')); assert.equal(me.enrollment.division_code, 'D1ADA'); assert.equal(me.setup.branch, 'AIDS'); assert.equal(me.setup.yearLevel, 1)
+    assert.equal(ok(await call(S1, 'GET', 'class-items')).division, 'D1ADA')
+  })
+
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

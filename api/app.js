@@ -113,10 +113,19 @@ async function joinRequest(who, req) {
     need(who, 'transfer.request', {});
     const from = who.enrollment.division_code, cur = who.divisions.get(from), to = who.divisions.get(div);
     if (div === from) throw bad('SAME_DIVISION', `You are already in ${div}.`);
-    if (!cur || cur.year_id !== to.year_id || cur.branch_code !== to.branch_code) throw bad('OTHER_BRANCH_OR_YEAR', `You can move only to another division of your own branch and year. For a branch or year change, ask your HOD.`);
+    if (!cur || !to) throw bad('UNKNOWN_DIVISION', 'Choose a division from the list.');
+    // A move to another branch or year is allowed too; it is decided by the target class teacher or the HOD of the
+    // target branch (never the old class or a CR), and the verified profile follows the new class once approved.
     const reason = txt(b.reason, 300);
     if (reason.length < 5) throw bad('REASON_REQUIRED', 'Say briefly why you need to change division.');
     transfer = { from, reason };
+  } else {
+    // A first join must match the branch and year the student gave in "Set up your profile".
+    const [st] = await db.q('select setup from account_state where account_id = $1', [who.account.id]);
+    const setup = st && st.setup, d = who.divisions.get(div);
+    if (setup && setup.branch && (d.branch_code !== setup.branch || (d.level && Number(setup.yearLevel) !== d.level))) {
+      throw bad('PROFILE_MISMATCH', `${div} is a ${d.branch_code} division for year ${d.level || '?'}, but your profile says ${setup.branch}, year ${setup.yearLevel}. Pick a division of your own branch and year, or correct your profile first.`);
+    }
   }
   const cap = await setting('division_capacity', 65);
   const [{ n }] = await db.q(`select count(*)::int as n from class_enrollments where division_code = $1 and status = 'active'`, [div]);
@@ -224,6 +233,11 @@ async function decideJoins(who, req) {
       const [{ n }] = await db.q(`select count(*)::int as n from class_enrollments where division_code = $1 and status = 'active'`, [r.division_code]);
       fail(now.status !== r.status || !from.includes(now.status) ? `Already ${now.status}${now.name ? ` by ${now.name}` : ''}.` : n >= cap ? `${r.division_code} is full (${cap}).` : isTransfer ? `This student is no longer in ${r.from_division}.` : 'This student is already in a class this year.');
       continue;
+    }
+    if (isTransfer && decision === 'approved') {
+      // the verified profile follows the approved class (branch and year), so the two never disagree
+      await db.q(`update account_state s set setup = s.setup || jsonb_build_object('branch', d.branch_code, 'yearLevel', y.level)
+          from divisions d join academic_years y on y.id = d.year_id where s.account_id = $1 and d.code = $2 and s.setup is not null`, [r.student_id, r.division_code]);
     }
     await db.audit(who.account.id, `${isTransfer ? 'transfer' : 'join'}.${decision === 'approved' ? 'approve' : 'reject'}`, id, { division: r.division_code, ...(isTransfer ? { from: r.from_division } : {}), by: as, override: r.status !== 'pending' }, branchOf(who, r.division_code));
     results.push({ id, ok: true, status: decision });
