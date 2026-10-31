@@ -615,7 +615,8 @@ async function ttPreview(who, req) {
     subjects: new Map((await db.q('select code, name from subjects')).map((r) => [r.code, r.name])),
     faculty: new Map((await db.q('select code, name from faculty')).map((r) => [r.code, r.name])),
   };
-  const result = tt.validate(b.sheets.map((s) => ({ name: txt(s && s.name, 60), rows: Array.isArray(s && s.rows) ? s.rows.slice(0, 6000).map((r) => (Array.isArray(r) ? r.slice(0, 30) : [])) : [] })), known);
+  const result = tt.validate(b.sheets.map((s) => ({ name: txt(s && s.name, 60), rows: Array.isArray(s && s.rows) ? s.rows.slice(0, 6000).map((r) => (Array.isArray(r) ? r.slice(0, 30) : [])) : [],
+    merges: Array.isArray(s && s.merges) ? s.merges.slice(0, 4000).filter((m) => typeof m === 'string' && /^[A-Z]{1,3}\d{1,5}:[A-Z]{1,3}\d{1,5}$/.test(m)) : [] })), known);
   // Permission per division. Either the whole file is allowed, or the uploader explicitly chooses "only my divisions".
   const notAllowed = result.divisions.filter((d) => !can(who, 'timetable.publish', { division: d }));
   if (notAllowed.length && !result.errors.length) {
@@ -639,7 +640,8 @@ async function ttPreview(who, req) {
     `insert into timetable_entries (version_id, division_code, day, start_min, end_min, subject, teacher_code, room, batch, type, source_row)
      select $1, x.division, x.day, x.start, x."end", x.subject, x.teacher, x.room, x.batch, x.type, x.row
        from jsonb_to_recordset($2::jsonb) as x(division text, day int, start int, "end" int, subject text, teacher text, room text, batch text, type text, row int)`,
-    [v.id, JSON.stringify(result.entries)]);
+    // source_row is the worksheet row number; entries read from the college grid carry a cell reference ("B5")
+    [v.id, JSON.stringify(result.entries.map((e) => (typeof e.row === 'string' ? { ...e, row: Number(e.row.replace(/^[A-Z]+/, '')) || null } : e)))]);
   return { ...out, versionId: v.id, term, preview: result.entries.map(({ sheet, ...e }) => e) };
 }
 async function ttPublish(who, req) {
