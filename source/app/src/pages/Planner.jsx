@@ -6,6 +6,7 @@ import { useStudentAttendance } from '../lib/record.js'
 import { tutorsFor, weakestSubject } from '../lib/insights.js'
 import { marksTable, validateSubject, validateScale, computeSGPA, checkTarget, applyWhatIf, gradeFor, projectSGPA, RESULT, DEMO_GRADE_SCALE, requiredTotal, totalMax } from '../lib/academic.js'
 import { uid } from '../lib/ids.js'
+import { useMyTimetable } from '../lib/timetable.js'
 
 const STATUS = {
   secured: { tone: 'ok', label: 'Already reached', icon: 'check' },
@@ -80,6 +81,22 @@ function Marks({ subjects, scale, updateMyData, focus }) {
     setSel(s.id); setEditing(null)
   }
   const remove = (s) => updateMyData((u) => ({ ...u, subjects: u.subjects.filter((x) => x.id !== s.id) }))
+  // Every subject on the student's timetable appears here. The timetable gives the name and code only, so credits and
+  // marks are entered by the student (never guessed); until then the subject waits under "From your timetable".
+  const tt = useMyTimetable()
+  const fromTimetable = useMemo(() => {
+    const key = (x) => String(x || '').trim().toLowerCase()
+    const have = new Set(subjects.flatMap((x) => [key(x.name), key(x.code)]).filter(Boolean))
+    const seen = new Map()
+    for (const e of tt.entries || []) {
+      const name = String(e.title || e.subject || '').trim(), code = String(e.subject || '').trim()
+      if (!name || /^(break|lunch|recess|short break|free)$/i.test(name) || /break/i.test(e.type || '')) continue
+      const k = key(code || name)
+      if (seen.has(k) || have.has(key(name)) || (code && have.has(key(code)))) continue
+      seen.set(k, { name, code: code && code !== name ? code : '' })
+    }
+    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }, [tt.entries, subjects])
   return (
     <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
       {focus && !match && <p className="rounded-xl border border-[#EBDDB9] bg-[#FDF8EC] px-4 py-3 text-[13.5px] lg:col-span-2"><b>{focus}</b> isn’t in your planner yet. Add it with its credits and internal marks to see what you need.</p>}
@@ -104,10 +121,19 @@ function Marks({ subjects, scale, updateMyData, focus }) {
               )
             })}
           </ul>
-        ) : <Empty icon="book" title="No subjects yet" action={<Button size="sm" icon="plus" onClick={() => setEditing('new')}>Add a subject</Button>}>Add each subject with its credits and marks.</Empty>}
+        ) : !fromTimetable.length ? <Empty icon="book" title="No subjects yet" action={<Button size="sm" icon="plus" onClick={() => setEditing('new')}>Add a subject</Button>}>Add each subject with its credits and marks.</Empty> : null}
+        {fromTimetable.length > 0 && <div className={cx(subjects.length > 0 && 'mt-4 border-t border-line pt-3')}>
+          <p className="text-[12px] font-semibold uppercase tracking-[.06em] text-muted">From your timetable{tt.division ? ` · ${tt.division}` : ''}</p>
+          <p className="mt-0.5 text-[12.5px] text-muted">Add the credits and marks for each (the timetable doesn’t list them).</p>
+          <ul className="mt-2 flex flex-col gap-1.5">{fromTimetable.map((x) => (
+            <li key={x.code || x.name} className="flex items-center gap-2 rounded-lg border border-dashed border-line2 px-3 py-2">
+              <span className="min-w-0 flex-1"><b className="block text-[14px] font-semibold leading-snug">{x.name}</b>{x.code && <small className="font-mono text-[11.5px] text-muted">{x.code}</small>}</span>
+              <Button size="sm" variant="secondary" icon="plus" onClick={() => setEditing({ name: x.name, code: x.code })} aria-label={`Set up ${x.name}`}>Set up</Button>
+            </li>))}</ul>
+        </div>}
       </Card>
       {current ? <SubjectTable s={current} scale={scale} onEdit={() => setEditing(current)} onRemove={() => remove(current)} /> : <Card><Empty icon="book" title="Pick or add a subject" /></Card>}
-      <Dialog open={!!editing} onClose={() => setEditing(null)} title={editing === 'new' ? 'Add subject' : 'Edit subject'} wide>
+      <Dialog open={!!editing} onClose={() => setEditing(null)} title={editing === 'new' || !editing?.id ? 'Add subject' : 'Edit subject'} wide>
         {editing && <SubjectForm initial={editing === 'new' ? null : editing} onSave={save} onCancel={() => setEditing(null)} />}
       </Dialog>
     </div>
