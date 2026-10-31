@@ -8,7 +8,7 @@ import { Publisher, PublishedList, ClassRoles } from '../components/Academic.jsx
 import { BranchView, Divisions, ClubsAdmin } from '../components/HodBranch.jsx'
 
 /**
- * HOD portal (separate route /hod). Only numbers in the server's HOD list reach it; every action is checked again
+ * HOD portal (separate route /hod). Only emails in the server's HOD list reach it; every action is checked again
  * by the server against the HOD's own branch. No classroom screens: no own timetable, classes or attendance.
  */
 const TABS = [['dashboard', 'Dashboard'], ['branch', 'Branch view'], ['teachers', 'Teachers'], ['divisions', 'Divisions & syllabus'], ['instructions', 'Instructions'], ['send', 'Publish'], ['published', 'Published in branch'], ['roles', 'Class roles'], ['overrides', 'Join requests'], ['alerts', 'Attendance alerts'], ['events', 'Events'], ['clubs', 'Clubs & councils'], ['parents', 'Parents'], ['audit', 'Audit log']]
@@ -16,7 +16,7 @@ export default function Hod({ query = {} }) {
   const { me, session } = useApp()
   const [tab, setTab] = useState(TABS.some((t) => t[0] === query.tab) ? query.tab : 'dashboard')
   useEffect(() => { if (TABS.some((t) => t[0] === query.tab)) setTab(query.tab) }, [query.tab]) // links like #/hod?tab=audit
-  if (me?.role !== 'hod' || !session.cloud) return <div className="py-10"><Empty icon="lock" title="HOD access only">Sign in on the HOD tab with the number registered for your branch.</Empty></div>
+  if (me?.role !== 'hod' || !session.cloud) return <div className="py-10"><Empty icon="lock" title="HOD access only">Sign in on the HOD tab with the college email registered for your branch.</Empty></div>
   return (
     <div>
       <PageHeader title="HOD portal" subtitle={`Branch: ${(session.hod?.branches || []).join(', ')}. Every change here is recorded in the audit log.`} />
@@ -73,6 +73,8 @@ function Teachers() {
     catch (x) { setErr(x.message) } finally { setBusy(false) }
   }
   const status = async (t, active) => { try { await api('teacher-status', { method: 'POST', body: { email: t.email, active } }); pushToast(active ? 'Teacher re-activated.' : 'Teacher deactivated. Their access ends on their next action.'); s.reload() } catch (x) { pushToast(x.message, 'bad') } }
+  // Permanent delete: only offered for deactivated teachers; the server refuses to delete an active one.
+  const remove = async (t) => { try { await api('teacher-delete', { method: 'POST', body: { email: t.email } }); pushToast('Teacher deleted permanently.'); s.reload() } catch (x) { pushToast(x.message, 'bad') } }
   const addDivs = async () => {
     setBusy(true)
     try { for (const division of assign.divisions) await api('teacher-division', { method: 'POST', body: { email: assign.email, division, subject: assign.subject } }); pushToast(`Assigned ${assign.divisions.join(', ')}.`); setAssign({ ...assign, divisions: [] }); s.reload() }
@@ -83,12 +85,13 @@ function Teachers() {
   return (
     <div className="grid gap-4 xl:grid-cols-[1fr_420px]">
       <Card>
-        <CardTitle eyebrow="Only active numbers here can open the Teacher portal">Teachers</CardTitle>
+        <CardTitle eyebrow="Only active teachers listed here can open the Teacher portal">Teachers</CardTitle>
         <Loading s={s}>{!s.data?.length ? <p className="mt-2 text-[13.5px] text-muted">No teachers yet. Add one on the right.</p> : (
           <ul className="mt-2 text-[13.5px]">{s.data.map((t) => (
             <li key={t.email} className="border-t border-line py-2">
               <div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{t.name}</span>{t.code && <Badge>{t.code}</Badge>}<span className="text-muted">{t.email} · {t.branch_code}</span>{!t.active && <Badge tone="bad">Deactivated</Badge>}{t.can_publish_timetable && <Badge tone="info">Timetables</Badge>}
-                <span className="ml-auto flex gap-2"><Button size="sm" variant="ghost" onClick={() => setAssign({ ...assign, email: t.email })}>Assign divisions</Button>{t.active ? <ConfirmButton size="sm" variant="ghost" confirmText="Deactivate now" onConfirm={() => status(t, false)}>Deactivate</ConfirmButton> : <Button size="sm" variant="secondary" onClick={() => status(t, true)}>Re-activate</Button>}</span></div>
+                <span className="ml-auto flex gap-2"><Button size="sm" variant="ghost" onClick={() => setAssign({ ...assign, email: t.email })}>Assign divisions</Button>{t.active ? <ConfirmButton size="sm" variant="ghost" confirmText="Deactivate now" onConfirm={() => status(t, false)}>Deactivate</ConfirmButton> : <><Button size="sm" variant="secondary" onClick={() => status(t, true)}>Re-activate</Button><ConfirmButton size="sm" variant="danger" confirmText="Yes, delete permanently" onConfirm={() => remove(t)}>Delete</ConfirmButton></>}</span></div>
+              {!t.active && <p className="mt-1 text-[12.5px] text-bad">Delete removes this teacher and their division assignments for good. It can’t be undone. Re-activate instead if you might need them again.</p>}
               <div className="mt-1 flex flex-wrap gap-1.5">{t.teaches.length ? t.teaches.map((x) => <span key={x.division + x.subject} className="inline-flex items-center gap-1 rounded-md bg-ground px-1.5 py-0.5 text-[12px]">{x.division}: {x.subject}<button type="button" aria-label={`Remove ${x.division}`} className="text-muted hover:text-bad" onClick={() => unassign(t, x.division)}>×</button></span>) : <span className="text-[12.5px] text-warn">No divisions assigned yet</span>}</div>
             </li>))}</ul>)}</Loading>
       </Card>
@@ -157,7 +160,7 @@ function Instructions() {
 }
 
 const ACTION_TEXT = {
-  'account.create': 'Account created', 'teacher.add': 'Teacher added', 'teacher.update': 'Teacher updated', 'teacher.deactivate': 'Teacher deactivated', 'teacher.reactivate': 'Teacher re-activated',
+  'account.create': 'Account created', 'teacher.add': 'Teacher added', 'teacher.update': 'Teacher updated', 'teacher.deactivate': 'Teacher deactivated', 'teacher.reactivate': 'Teacher re-activated', 'teacher.delete': 'Teacher deleted',
   'teacher.assign': 'Teacher assigned to division', 'teacher.unassign': 'Teacher removed from division', 'post.create': 'Sent to classes', 'post.delete': 'Post deleted',
   'join.request': 'Asked to join', 'join.cancel': 'Join request cancelled', 'join.approve': 'Join approved', 'join.reject': 'Join rejected', 'enrollment.revoke': 'Removed from class',
   'cr.request': 'Asked to be class rep', 'cr.approve': 'Class rep approved', 'cr.reject': 'Class rep rejected', 'cr.assign': 'Class rep assigned', 'cr.remove': 'Class rep removed',
