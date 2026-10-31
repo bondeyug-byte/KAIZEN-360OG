@@ -172,7 +172,7 @@ export default function Layout({ route, children, full }) {
           </span>
         </header>
         {(
-          <div className="sticky top-0 z-30 hidden h-16 items-center gap-3 px-6 lg:flex xl:px-8">
+          <div className="sticky top-0 z-30 hidden h-16 items-center gap-3 bg-[#F3F6F3]/95 px-6 backdrop-blur-md lg:flex xl:px-8">
             <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-muted"><span className="text-[#8A9A90]">Campus360 /</span> <span className="font-semibold text-ink">{pages.find((n) => active(n.path))?.label || ''}</span></span>
             <GlobalSearch pages={pages} />
             {signedIn ? <>
