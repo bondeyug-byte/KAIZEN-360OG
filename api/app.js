@@ -396,6 +396,27 @@ async function teacherStatus(who, req) {
   await db.audit(who.account.id, active ? 'teacher.reactivate' : 'teacher.deactivate', mask(phone), null, t.branch_code);
   return { active };
 }
+async function teacherDelete(who, req) {
+  const b = body(req);
+  const phone = normalizeEmail(txt(b.email, 254));
+  const [t] = phone ? await db.q('select branch_code, active from teacher_whitelist where phone = $1', [phone]) : [];
+  if (!t) throw notFound('That account is not on the teacher list.');
+  need(who, 'teacher.manage', { branch: t.branch_code }, 'You can only delete teachers of your own branch.');
+  if (t.active) throw conflict('STILL_ACTIVE', 'Deactivate this teacher first, then delete.');
+  try {
+    // one statement: the teacher, their division assignments and their instruction rows go together or not at all
+    const rows = await db.q(
+      `with a as (delete from teacher_divisions where teacher_phone = $1),
+            c as (delete from instruction_recipients where teacher_phone = $1)
+       delete from teacher_whitelist where phone = $1 and active = false returning phone`, [phone]);
+    if (!rows.length) throw conflict('NOT_DELETED', 'That teacher changed while you were deleting. Refresh and try again.');
+  } catch (e) {
+    if (e && e.code === '23503') throw conflict('HAS_RECORDS', 'This teacher has records linked to them, so they can’t be deleted. Leave them deactivated.');
+    throw e;
+  }
+  await db.audit(who.account.id, 'teacher.delete', mask(phone), null, t.branch_code);
+  return { deleted: true };
+}
 async function teacherDivision(who, req) {
   const b = body(req);
   const phone = normalizeEmail(txt(b.email, 254));
@@ -705,7 +726,7 @@ const ROUTES = {
   'POST join-requests': joinRequest, 'DELETE join-requests': cancelJoin, 'GET join-requests': listJoins, 'POST join-decision': decideJoins,
   'POST enrollment-revoke': revokeEnrollment, 'GET roster': roster,
   'POST cr-requests': crRequest, 'DELETE cr-requests': cancelCr, 'GET cr-requests': listCr, 'POST cr-decision': decideCr, 'POST cr-assign': assignCr,
-  'GET teachers': listTeachers, 'POST teachers': saveTeacher, 'POST teacher-status': teacherStatus, 'POST teacher-division': teacherDivision,
+  'GET teachers': listTeachers, 'POST teachers': saveTeacher, 'POST teacher-status': teacherStatus, 'POST teacher-delete': teacherDelete, 'POST teacher-division': teacherDivision,
   'POST instructions': sendInstruction, 'GET instructions': listInstructions, 'POST instruction-status': instructionStatus,
   'GET hod-summary': hodSummary, 'GET audit': audit,
   'POST posts': createPost, 'GET posts': myPosts, 'DELETE posts': deletePost, 'GET feed': feed, 'GET file': getFile,
