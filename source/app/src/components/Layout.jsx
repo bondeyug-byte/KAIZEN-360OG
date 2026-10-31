@@ -163,12 +163,12 @@ export default function Layout({ route, children, full }) {
       </aside>
 
       <div className={cx('flex min-w-0 flex-1 flex-col', full && 'lg:h-screen')}>
-        <header className="glass sticky top-0 z-30 flex items-center justify-between gap-2 border-x-0 border-t-0 px-3 py-2 lg:hidden">
+        <header className="glass sticky top-0 z-30 flex items-center justify-between gap-2 border-x-0 border-t-0 px-3 pb-2 pt-[max(8px,env(safe-area-inset-top))] lg:hidden">
           <Brand compact />
           <span className="flex items-center gap-1">
             <GlobalSearch pages={pages} compact />
-            <button type="button" onClick={() => window.dispatchEvent(new Event('campus360:assistant'))} aria-label="Open voice assistant" className="press grid h-9 w-9 place-items-center rounded-xl bg-maroon text-white"><Icon name="mic" size={17} /></button>
-            {signedIn ? <><NotificationBell /><a href="#/profile" className="press grid h-9 w-9 place-items-center rounded-xl bg-lime-soft text-[13px] font-bold text-brand" aria-label="Profile">{initials(me?.name)}</a></> : <a href="#/login" className="press rounded-lg bg-brand px-3.5 py-2 text-[13px] font-semibold text-white">Sign in</a>}
+            <button type="button" onClick={() => window.dispatchEvent(new Event('campus360:assistant'))} aria-label="Open voice assistant" className="press grid h-10 w-10 place-items-center rounded-xl bg-maroon text-white"><Icon name="mic" size={17} /></button>
+            {signedIn ? <><NotificationBell /><a href="#/profile" className="press grid h-10 w-10 place-items-center rounded-xl bg-lime-soft text-[13px] font-bold text-brand" aria-label="Profile">{initials(me?.name)}</a></> : <a href="#/login" className="press inline-flex min-h-[40px] items-center rounded-lg bg-brand px-3.5 text-[13px] font-semibold text-white">Sign in</a>}
           </span>
         </header>
         {(
@@ -194,35 +194,35 @@ export default function Layout({ route, children, full }) {
           </div>
         )}
         {session.mode === 'demo' && (
-          <div className="mx-3 mt-2 flex items-center justify-center gap-2 rounded-xl border border-[#E1DAF0] bg-[#F7F4FC]/90 px-4 py-1.5 text-center text-[12.5px] text-[#4E3570] lg:mx-6 xl:mx-8">
-            <Badge tone="demo">Demo</Badge><span>Simulated {ROLE_LABEL[r]} sign-in · not a Google account<span className="hidden sm:inline"> · permissions are checked in this app only; production needs server-side enforcement</span></span>
+          <div className="mx-3 mt-2 flex items-center justify-center gap-2 rounded-xl border border-[#E1DAF0] bg-[#F7F4FC]/90 px-4 py-1.5 text-center text-[12.5px] text-[#4E3570] max-sm:justify-start max-sm:px-3 max-sm:py-1 max-sm:text-left max-sm:text-[12px] lg:mx-6 xl:mx-8">
+            <Badge tone="demo">Demo</Badge><span className="max-sm:min-w-0 max-sm:truncate">Simulated {ROLE_LABEL[r]} sign-in<span className="max-sm:hidden"> · not a Google account</span><span className="hidden sm:inline"> · permissions are checked in this app only; production needs server-side enforcement</span></span>
           </div>
         )}
-        <main className={cx('flex-1', full ? 'min-h-0' : 'mx-auto w-full max-w-[1240px] px-4 py-5 pb-28 sm:px-6 lg:px-6 lg:pb-12 xl:px-8')}>
+        <main className={cx('flex-1', full ? 'min-h-0' : 'mx-auto w-full max-w-[1240px] px-4 py-5 pb-[calc(96px+env(safe-area-inset-bottom))] max-sm:pt-4 sm:px-6 lg:px-6 lg:pb-12 xl:px-8')}>
           <div key={route} className={full ? 'h-full' : 'page-in'}><ErrorBoundary resetKey={route}>{children}</ErrorBoundary></div>
         </main>
       </div>
 
-      <nav aria-label="Main" className="glass fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-x-0 border-b-0 pb-[env(safe-area-inset-bottom)] lg:hidden">
+      <nav aria-label="Main" className="glass fixed inset-x-0 bottom-0 z-40 grid border-x-0 border-b-0 px-1 pb-[env(safe-area-inset-bottom)] lg:hidden" style={{ gridTemplateColumns: `repeat(${MOBILE.length + 1}, minmax(0, 1fr))` }}>
         {MOBILE.map((n) => (
-          <a key={n.path} href={'#' + n.path} aria-current={active(n.path) ? 'page' : undefined} className={cx('press relative flex min-h-[60px] flex-col items-center justify-center gap-1 text-[11px] font-semibold', active(n.path) ? 'text-brand' : 'text-muted')}>
-            <span className={cx('nav-ind absolute top-0 h-[3px] w-8 rounded-b-full bg-brand', active(n.path) ? 'opacity-100' : 'scale-x-0 opacity-0')} />
-            <Icon name={n.icon} size={21} />{n.label}
+          <a key={n.path} href={'#' + n.path} aria-current={active(n.path) ? 'page' : undefined} className={cx('press relative flex min-h-[60px] flex-col items-center justify-center gap-0.5 text-[11px] font-semibold', active(n.path) ? 'text-brand' : 'text-muted')}>
+            <span className={cx('grid h-7 w-12 place-items-center rounded-full transition-colors', active(n.path) ? 'bg-lime-soft' : '')}><Icon name={n.icon} size={20} /></span><span className="max-w-full truncate px-0.5">{n.label}</span>
           </a>
         ))}
-        <button onClick={() => setMore(true)} aria-expanded={more} className="press flex min-h-[60px] flex-col items-center justify-center gap-1 text-[11px] font-semibold text-muted"><Icon name="menu" size={21} />More</button>
+        <button onClick={() => setMore(true)} aria-expanded={more} aria-haspopup="dialog" className={cx('press flex min-h-[60px] flex-col items-center justify-center gap-0.5 text-[11px] font-semibold', more ? 'text-brand' : 'text-muted')}><span className={cx('grid h-7 w-12 place-items-center rounded-full', more && 'bg-lime-soft')}><Icon name="menu" size={20} /></span>More</button>
       </nav>
       {more && (
         <div className="fade-in fixed inset-0 z-50 flex items-end bg-[#12261C]/40 backdrop-blur-[2px] lg:hidden" onClick={() => setMore(false)}>
-          <nav aria-label="All sections" className="sheet-in max-h-[85vh] w-full overflow-y-auto rounded-t-2xl bg-surface p-4 pb-8 shadow-pop" onClick={(e) => e.stopPropagation()}>
-            <span className="mx-auto mb-4 block h-1 w-10 rounded-full bg-line2" />
+          <nav aria-label="All sections" className="sheet-in max-h-[85vh] w-full overflow-y-auto rounded-t-2xl bg-surface px-4 pt-3 shadow-pop pb-[calc(20px+env(safe-area-inset-bottom))]" onClick={(e) => e.stopPropagation()}>
+            <span className="mx-auto mb-2 block h-1 w-10 rounded-full bg-line2" />
+            <div className="mb-3 flex items-center justify-between gap-2"><b className="font-display text-[17px]">All sections</b><button type="button" onClick={() => setMore(false)} aria-label="Close menu" className="press grid h-10 w-10 place-items-center rounded-xl text-muted hover:bg-ground"><Icon name="x" size={18} /></button></div>
             {groups.map((g) => (
               <div key={g.label} className="mb-3">
                 <p className="mb-1.5 px-1 text-[11px] font-bold uppercase tracking-[.12em] text-[#7B8C82]">{g.label}</p>
                 <div className="grid grid-cols-2 gap-1.5">
                   {g.items.map((n) => (
-                    <a key={n.path} href={'#' + n.path} onClick={() => setMore(false)} className={cx('press flex min-h-[46px] items-center gap-2 rounded-xl border px-3 text-[14px] font-medium', active(n.path) ? 'border-brand/30 bg-brand-50 text-brand' : 'border-line')}>
-                      <Icon name={n.icon} size={18} /><span className="flex-1">{n.label}</span>{n.badge === 'unread' && unread > 0 && <span className="rounded-md bg-lime px-1.5 text-[11px] font-bold text-lime-ink">{unread}</span>}
+                    <a key={n.path} href={'#' + n.path} onClick={() => setMore(false)} aria-current={active(n.path) ? 'page' : undefined} className={cx('press flex min-h-[48px] items-center gap-2 rounded-xl border px-3 text-[13.5px] font-medium leading-tight', active(n.path) ? 'border-brand/30 bg-brand-50 font-semibold text-brand' : 'border-line')}>
+                      <Icon name={n.icon} size={18} className="flex-none" /><span className="min-w-0 flex-1">{n.label}</span>{n.badge === 'unread' && unread > 0 && <span className="rounded-md bg-lime px-1.5 text-[11px] font-bold text-lime-ink">{unread}</span>}
                     </a>
                   ))}
                 </div>

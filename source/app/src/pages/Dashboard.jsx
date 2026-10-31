@@ -53,7 +53,7 @@ export function nextClass(tt, now) {
 const SECTIONS = [['calendar', 'Academic calendar'], ['dates', 'Important academic dates'], ['progress', 'Attendance and marks'], ['events', 'College events'], ['notices', 'Notices'], ['actions', 'Quick actions'], ['study', 'Study planner (personal)']]
 const fmtDate = (iso, o) => new Intl.DateTimeFormat('en-IN', { timeZone: CAMPUS_TIMEZONE, ...o }).format(new Date(iso))
 const DUE_BADGE = { overdue: ['Overdue', 'bad'], soon: ['Due soon', 'warn'] }
-const Link = ({ href, children }) => <a href={href} className="text-[13px] font-semibold text-maroon underline-offset-2 hover:underline">{children}</a>
+const Link = ({ href, children }) => <a href={href} className="text-[13px] font-semibold text-maroon underline-offset-2 hover:underline max-lg:inline-flex max-lg:min-h-[36px] max-lg:items-center">{children}</a>
 
 export default function Dashboard({ query = {} }) {
   const { db, me, myData, now, session, updateMyData, pushToast } = useApp()
@@ -94,7 +94,7 @@ export default function Dashboard({ query = {} }) {
     <div className="flex flex-col gap-4">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="font-display text-[26px] font-semibold leading-tight">Overview</h1>
+          <h1 className="font-display text-[26px] font-semibold leading-tight max-sm:text-[23px]">Overview</h1>
           <p className="text-[13.5px] text-muted">{fmtDate(now, { weekday: 'long', day: 'numeric', month: 'long' })}{division ? ` · ${division}` : ''}{me.name ? ` · ${me.name}` : ''}{me.demo ? ' · sample student' : ''}</p>
         </div>
         <Button size="sm" variant="secondary" onClick={() => setCustomize(true)}>Customise</Button>

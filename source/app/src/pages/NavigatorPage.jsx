@@ -184,7 +184,7 @@ export default function NavigatorPage({ query }) {
         <div className="sticky top-0 z-10 -mx-4 flex flex-col items-center bg-surface px-4 pb-1 pt-2 lg:hidden">
           <button type="button" aria-label={`Panel size: ${sheet}. Tap to change`} onClick={() => { if (Date.now() - lastDrag.current < 300) return; setSheet(sheet === 'peek' ? 'half' : sheet === 'half' ? 'full' : 'peek') }}
             onPointerDown={dragStart} onPointerMove={dragMove} onPointerUp={dragEnd} onPointerCancel={dragEnd}
-            className="flex h-6 w-24 touch-none items-center justify-center"><span className="h-1.5 w-10 rounded-full bg-line2" /></button>
+            className="flex h-8 w-28 touch-none items-center justify-center"><span className="h-1.5 w-10 rounded-full bg-line2" /></button>
         </div>
         <div className="flex items-center justify-between">
           <div className={cx(!panelOpen && 'lg:hidden')}><h1 className="font-display text-[22px] font-semibold leading-tight">Campus navigator</h1><p className="text-[13px] text-muted">VESIT main building · G + 5 floors</p></div>
