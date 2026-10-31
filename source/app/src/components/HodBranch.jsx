@@ -23,18 +23,18 @@ export function BranchView() {
   return (
     <div className="flex flex-col gap-4">
       <Card>
-        <form className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6" onSubmit={(e) => { e.preventDefault(); setApplied(q) }}>
+        <form className="grid gap-3 max-sm:grid-cols-2 max-sm:gap-2.5 sm:grid-cols-3 lg:grid-cols-6" onSubmit={(e) => { e.preventDefault(); setApplied(q) }}>
           <Field label="Year">{(id) => <select id={id} className={inputCls} value={q.year} onChange={set('year')}><option value="">All years</option>{(d?.years || []).map((y) => <option key={y.id} value={y.id}>{y.label} {y.calendar}</option>)}</select>}</Field>
           <Field label="Division">{(id) => <select id={id} className={inputCls} value={q.division} onChange={set('division')}><option value="">All</option>{(d?.divisions || []).filter((x) => !q.year || x.year_id === q.year).map((x) => <option key={x.code} value={x.code}>{x.code}</option>)}</select>}</Field>
           <Field label="Subject">{(id) => <select id={id} className={inputCls} value={q.subject} onChange={set('subject')}><option value="">All</option>{(d?.subjects || []).map((x) => <option key={x} value={x}>{x}</option>)}</select>}</Field>
           <Field label="From">{(id) => <input id={id} type="date" className={inputCls} value={q.from} onChange={set('from')} />}</Field>
           <Field label="To">{(id) => <input id={id} type="date" className={inputCls} value={q.to} onChange={set('to')} />}</Field>
-          <div className="flex items-end gap-2"><Button type="submit">Apply</Button><Button type="button" variant="ghost" onClick={() => { const z = { year: '', division: '', subject: '', from: '', to: '' }; setQ(z); setApplied(z) }}>Reset</Button></div>
+          <div className="flex items-end gap-2 max-sm:col-span-2"><Button type="submit" className="max-sm:flex-1">Apply</Button><Button type="button" variant="ghost" onClick={() => { const z = { year: '', division: '', subject: '', from: '', to: '' }; setQ(z); setApplied(z) }}>Reset</Button></div>
         </form>
       </Card>
       <Loading s={s}>{d && <>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {[['Divisions', d.divisions.length], ['Students', d.divisions.reduce((a, x) => a + x.students, 0)], ['Below attendance threshold', d.defaulters === null ? 'not set' : d.defaulters.length], ['Data-quality issues', d.issues.length]].map(([l, n]) => <Card key={l}><b className="font-display text-[26px]">{n}</b><span className="block text-[13px] text-muted">{l}</span></Card>)}
+        <div className="grid grid-cols-2 gap-3 max-sm:gap-2.5 md:grid-cols-4">
+          {[['Divisions', d.divisions.length], ['Students', d.divisions.reduce((a, x) => a + x.students, 0)], ['Below attendance threshold', d.defaulters === null ? 'not set' : d.defaulters.length], ['Data-quality issues', d.issues.length]].map(([l, n]) => <Card key={l} className="max-sm:!px-3.5 max-sm:!py-3"><b className="font-display text-[26px] max-sm:text-[23px] max-sm:leading-tight">{n}</b><span className="block text-[13px] text-muted max-sm:text-[12.5px] max-sm:leading-snug">{l}</span></Card>)}
         </div>
         <Card><CardTitle eyebrow={d.branch}>Data quality</CardTitle>
           {d.issues.length ? <ul className="flex flex-col gap-1.5">{d.issues.map((i, k) => <li key={k} className="flex items-start gap-2 text-[13.5px]"><Badge tone={SEV[i.severity]}>{i.severity === 'warn' ? 'Fix' : 'Note'}</Badge><span>{i.text}</span></li>)}</ul> : <p className="text-[13.5px] text-muted">No issues found.</p>}

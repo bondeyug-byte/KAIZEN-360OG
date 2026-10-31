@@ -11,7 +11,9 @@ import { useLoad, Loading, useCatalog } from './CloudPortal.jsx'
 import { addDays, monthGrid, weekDays, weekStart, monthStart, addMonths, fmtDay, typeOf, groupByDate, upcoming, daysBetween } from '../lib/calendar.js'
 import bannerImg from '../assets/campus-banner.jpg'
 
-const Link = ({ href, children, ...p }) => <a href={href} {...p} className="text-[13px] font-semibold text-maroon underline-offset-2 hover:underline">{children}</a>
+const Link = ({ href, children, ...p }) => <a href={href} {...p} className="text-[13px] font-semibold text-maroon underline-offset-2 hover:underline max-lg:inline-flex max-lg:min-h-[36px] max-lg:items-center">{children}</a>
+// Phone month view: one solid dot per item type (the text labels are in the day list and the key below).
+const DOT = { assignment: '#B26B00', deadline: '#B26B00', exam: '#B42318', ca: '#B42318', assessment: '#B42318', tutorial: '#2457C5', practical: '#2457C5', event: '#1E7A4C', registration: '#6A4C93', reminder: '#5F6F66', date: '#5F6F66' }
 export const KIND_LABEL = { assignment: 'Assignment', notice: 'Academic notice', exam: 'Exam', ca: 'CA', tutorial: 'Tutorial', practical: 'Practical', material: 'Study material', announcement: 'Class announcement', other: 'Other', sports: 'Sports update', cultural: 'Cultural update' }
 const STAFF_KINDS = ['assignment', 'notice', 'exam', 'ca', 'tutorial', 'practical', 'material', 'announcement', 'other', 'sports', 'cultural']
 const DATED = ['exam', 'ca', 'tutorial', 'practical']
@@ -57,12 +59,13 @@ export function AssignmentsCard({ live, items, loading, error, demoTasks = [], n
             const status = live ? (a.status === 'cancelled' ? ['Cancelled', 'bad'] : a.submission ? [a.submission.late ? 'Submitted late' : 'Submitted', 'ok'] : overdue ? ['Overdue', 'bad'] : due && Date.parse(due) - now < 36 * 3600000 ? ['Due soon', 'warn'] : ['To do', 'neutral'])
               : [a.submission || 'Not submitted', a.submission === 'Not submitted' ? (overdue ? 'bad' : 'warn') : 'ok']
             return (
-              <li key={a.id} className="flex items-center gap-3 py-2.5">
-                <span className="min-w-0 flex-1">
+              <li key={a.id} className="flex items-center gap-3 py-2.5 max-sm:flex-wrap max-sm:gap-x-2 max-sm:gap-y-1.5">
+                <span className="min-w-0 flex-1 max-sm:basis-full">
                   <b className={cx('block truncate text-[14px] font-semibold', a.status === 'cancelled' && 'line-through')}>{a.title}</b>
                   <small className="text-[12.5px] text-muted">{[a.subject, due ? `due ${fmtDateTime(due)}` : 'no deadline'].filter(Boolean).join(' · ')}</small>
                 </span>
                 <Badge tone={status[1]}>{status[0]}</Badge>{a.demo && <Badge tone="demo">Sample</Badge>}
+                <span className="hidden max-sm:block max-sm:flex-1" aria-hidden="true" />
                 {live ? <Button size="sm" variant="secondary" onClick={() => setOpen(a)}>{a.submission ? 'Open' : 'Open / submit'}</Button> : <a href={a.href} className="press inline-flex min-h-[34px] items-center rounded-lg border border-line2 px-3 text-[13px] font-semibold hover:border-maroon">Open</a>}
               </li>)
           })}
@@ -175,10 +178,10 @@ export function AcademicCalendar({ items, status, message, empty, today, onRange
             <button key={date} type="button" role="gridcell" data-cal={date} aria-selected={sel} tabIndex={sel ? 0 : -1}
               aria-label={`${fmtDay(date, { weekday: 'long', day: 'numeric', month: 'long' })}${isToday ? ', today' : ''}: ${list.length ? `${list.length} item${list.length > 1 ? 's' : ''}` : 'nothing'}`}
               onClick={() => setPicked(date)}
-              className={cx('flex flex-col items-stretch gap-0.5 bg-surface p-1 text-left align-top', view === 'month' ? 'min-h-[64px] sm:min-h-[84px]' : 'min-h-[120px]', !inMonth && 'bg-ground/60 text-muted', sel && 'outline outline-2 -outline-offset-2 outline-maroon')}>
+              className={cx('flex flex-col items-stretch gap-0.5 bg-surface p-1 text-left align-top', view === 'month' ? 'min-h-[52px] sm:min-h-[84px]' : 'min-h-[120px] max-sm:min-h-[72px]', !inMonth && 'bg-ground/60 text-muted', sel && 'outline outline-2 -outline-offset-2 outline-maroon')}>
               <span className={cx('self-start rounded px-1 text-[12px] font-semibold tabular-nums', isToday && 'bg-maroon text-white')}>{Number(date.slice(8))}</span>
               {list.slice(0, view === 'month' ? 2 : 5).map((i) => <span key={i.key} className={cx('hidden truncate rounded px-1 text-[10.5px] font-semibold ring-1 ring-inset sm:block', typeOf(i.type).cls, i.cancelled && 'line-through')}><span aria-hidden="true">{typeOf(i.type).sym} </span>{i.title}</span>)}
-              {list.length > 0 && <span className="text-[10.5px] font-semibold text-muted sm:hidden" aria-hidden="true">{list.length} •</span>}
+              {list.length > 0 && <span className="mt-auto flex flex-wrap items-center gap-[3px] px-0.5 pb-0.5 sm:hidden" aria-hidden="true">{[...new Set(list.map((i) => i.type))].slice(0, 3).map((t) => <i key={t} className="block h-[6px] w-[6px] rounded-full" style={{ background: DOT[t] || DOT.date }} />)}{list.length > 3 && <b className="text-[9.5px] font-semibold leading-none text-muted">+{list.length - 3}</b>}</span>}
               {list.length > (view === 'month' ? 2 : 5) && <span className="hidden text-[10.5px] text-muted sm:block" aria-hidden="true">+{list.length - (view === 'month' ? 2 : 5)} more</span>}
             </button>)
         })}
@@ -189,7 +192,7 @@ export function AcademicCalendar({ items, status, message, empty, today, onRange
         {dayItems.length ? <ul className="mt-1 flex flex-col divide-y divide-line">{dayItems.map((i) => (
           <li key={i.key}><button type="button" onClick={() => (i.type === 'event' || i.type === 'registration') && onOpenEvent && !i.demo ? onOpenEvent(i.refId) : setDetail(i)} className="flex w-full items-center gap-2 py-2 text-left hover:bg-surface/60">
             <span className="w-[46px] flex-none font-mono text-[12px] tabular-nums text-muted">{i.time || 'All day'}</span>
-            <span className="min-w-0 flex-1"><b className={cx('block truncate text-[14px] font-semibold', i.cancelled && 'line-through')}>{i.title}</b><small className="block truncate text-[12px] text-muted">{[i.label, i.subject, i.venue, (i.divisions || []).join(', ')].filter(Boolean).join(' · ')}</small></span>
+            <span className="min-w-0 flex-1"><b className={cx('block truncate text-[14px] font-semibold max-sm:line-clamp-2 max-sm:whitespace-normal', i.cancelled && 'line-through')}>{i.title}</b><small className="block truncate text-[12px] text-muted">{[i.label, i.subject, i.venue, (i.divisions || []).join(', ')].filter(Boolean).join(' · ')}</small></span>
             <TypeChip type={i.type} cancelled={i.cancelled} compact />{i.cancelled && <Badge tone="bad">Cancelled</Badge>}{i.demo && <Badge tone="demo">Sample</Badge>}
           </button></li>))}</ul>
           : <p className="mt-1 text-[13px] text-muted">{empty || (status === 'ready' || demo ? 'Nothing on this day.' : '')}</p>}
@@ -221,7 +224,7 @@ export function ImportantDates({ items, status, today, demo, onOpenEvent }) {
           return (
             <li key={i.key} className="flex items-center gap-3 py-2">
               <span className="w-[52px] flex-none text-center leading-tight"><b className="block font-display text-[18px] tabular-nums">{Number(i.date.slice(8))}</b><small className="text-[11px] font-semibold uppercase text-muted">{fmtDay(i.date, { month: 'short' })}</small></span>
-              <span className="min-w-0 flex-1"><b className="block truncate text-[14px] font-semibold">{i.title}</b><small className="text-[12.5px] text-muted">{[n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : `In ${n} days`, i.time, i.subject].filter(Boolean).join(' · ')}</small></span>
+              <span className="min-w-0 flex-1"><b className="block truncate text-[14px] font-semibold max-sm:line-clamp-2 max-sm:whitespace-normal">{i.title}</b><small className="text-[12.5px] text-muted max-sm:leading-snug">{[n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : `In ${n} days`, i.time, i.subject].filter(Boolean).join(' · ')}</small></span>
               <TypeChip type={i.type} compact />{i.demo && <Badge tone="demo">Sample</Badge>}
               {i.type === 'registration' && onOpenEvent && !i.demo && <Button size="sm" variant="ghost" onClick={() => onOpenEvent(i.refId)}>Details</Button>}
             </li>)

@@ -44,9 +44,9 @@ function Dashboard({ go }) {
   return (
     <Loading s={s}>{s.data && (
       <div className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 max-sm:gap-2.5 md:grid-cols-4">
           {[['Divisions', s.data.divisions.length], ['Students in classes', s.data.divisions.reduce((a, d) => a + d.students, 0)], ['Join requests waiting', s.data.divisions.reduce((a, d) => a + d.pending, 0)], ['CR requests waiting', s.data.pendingCr]].map(([label, n]) => (
-            <Card key={label}><b className="font-display text-[28px]">{n}</b><span className="block text-[13px] text-muted">{label}</span></Card>))}
+            <Card key={label} className="max-sm:!px-3.5 max-sm:!py-3"><b className="font-display text-[28px] max-sm:text-[24px] max-sm:leading-tight">{n}</b><span className="block text-[13px] text-muted max-sm:text-[12.5px] max-sm:leading-snug">{label}</span></Card>))}
         </div>
         <Card>
           <CardTitle action={<Button size="sm" variant="secondary" onClick={() => go('overrides')}>Review requests</Button>}>Divisions</CardTitle>

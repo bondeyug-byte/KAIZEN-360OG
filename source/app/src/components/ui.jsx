@@ -84,7 +84,7 @@ export function Dialog({ open, onClose, title, children, wide }) {
   // Portalled to <body>: page wrappers use transform animations, which would otherwise trap position:fixed.
   return createPortal(
     <div className="fade-in fixed inset-0 z-50 flex items-end justify-center bg-[#1F2329]/40 p-0 backdrop-blur-[2px] sm:items-center sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={ref} role="dialog" aria-modal="true" aria-label={title} className={cx('dialog-in max-h-[92vh] w-full overflow-auto rounded-t-2xl border border-line bg-surface p-5 shadow-pop sm:rounded-2xl sm:p-6', wide ? 'sm:max-w-2xl' : 'sm:max-w-lg')}>
+      <div ref={ref} role="dialog" aria-modal="true" aria-label={title} className={cx('dialog-in max-h-[92vh] w-full overflow-auto rounded-t-2xl border border-line bg-surface p-5 shadow-pop max-sm:max-h-[88dvh] max-sm:px-4 max-sm:pb-[calc(20px+env(safe-area-inset-bottom))] sm:rounded-2xl sm:p-6', wide ? 'sm:max-w-2xl' : 'sm:max-w-lg')}>
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="font-display text-xl font-semibold">{title}</h2>
           <button onClick={onClose} aria-label="Close" className="press grid h-9 w-9 place-items-center rounded-lg text-muted hover:bg-sand hover:text-ink"><Icon name="x" size={18} /></button>
@@ -98,11 +98,11 @@ export function Dialog({ open, onClose, title, children, wide }) {
 
 export function PageHeader({ title, subtitle, actions, back }) {
   return (
-    <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <header className="mb-6 flex flex-wrap items-end justify-between gap-4 max-sm:mb-4 max-sm:gap-3">
       <div className="min-w-0">
-        {back && <a href="#/" className="mb-2 inline-flex items-center gap-1 text-[13px] font-medium text-muted hover:text-maroon"><Icon name="back" size={14} />Home</a>}
-        <h1 className="font-display text-[26px] font-semibold leading-tight text-ink sm:text-[30px]">{title}</h1>
-        {subtitle && <p className="mt-1 max-w-2xl text-[14.5px] text-muted">{subtitle}</p>}
+        {back && <a href="#/" className="mb-2 inline-flex items-center gap-1 text-[13px] font-medium text-muted hover:text-maroon max-sm:-ml-1 max-sm:mb-1 max-sm:min-h-[36px] max-sm:px-1"><Icon name="back" size={14} />Home</a>}
+        <h1 className="font-display text-[26px] font-semibold leading-tight text-ink max-sm:text-[23px] sm:text-[30px]">{title}</h1>
+        {subtitle && <p className="mt-1 max-w-2xl text-[14.5px] text-muted max-sm:text-[13.5px] max-sm:leading-snug">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </header>
@@ -119,18 +119,21 @@ export function Segmented({ options, value, onChange, label }) {
       if (el) setInd({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight })
     }
     measure()
+    // Phones: the options sit in one scrolling row, so keep the selected one in view (no effect when nothing overflows).
+    const w = wrap.current, el = w?.querySelector('[aria-checked="true"]')
+    if (w && el && w.scrollWidth > w.clientWidth + 1) { const l = el.offsetLeft - 12, r = el.offsetLeft + el.offsetWidth + 12; if (l < w.scrollLeft) w.scrollLeft = l; else if (r > w.scrollLeft + w.clientWidth) w.scrollLeft = r - w.clientWidth }
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
     ro?.observe(wrap.current)
     return () => ro?.disconnect()
   }, [value, options.length])
   const move = (dir) => { const i = options.findIndex((o) => o.value === value); const n = options[(i + dir + options.length) % options.length]; onChange(n.value); requestAnimationFrame(() => wrap.current?.querySelector('[aria-checked="true"]')?.focus()) }
   return (
-    <div ref={wrap} role="radiogroup" aria-label={label} className="relative inline-flex flex-wrap gap-0.5 rounded-lg bg-sand p-[3px] ring-1 ring-inset ring-line"
+    <div ref={wrap} role="radiogroup" aria-label={label} className="relative inline-flex flex-wrap gap-0.5 rounded-lg bg-sand p-[3px] ring-1 ring-inset ring-line max-sm:max-w-full max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:overscroll-x-contain max-sm:[scrollbar-width:none]"
       onKeyDown={(e) => { if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); move(1) } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); move(-1) } }}>
       {ind && <span aria-hidden="true" className="seg-ind pointer-events-none absolute left-0 top-0 rounded-md bg-surface shadow-[0_1px_2px_rgba(31,35,41,.12)] ring-1 ring-line" style={{ transform: `translate(${ind.x}px, ${ind.y}px)`, width: ind.w, height: ind.h }} />}
       {options.map((o) => (
         <button key={o.value} role="radio" aria-checked={value === o.value} tabIndex={value === o.value ? 0 : -1} onClick={() => onChange(o.value)}
-          className={cx('relative z-[1] min-h-[34px] rounded-md px-3 text-[13px] font-semibold transition-colors', value === o.value ? 'text-ink' : 'text-muted hover:text-ink', !ind && value === o.value && 'bg-surface shadow-sm')}>{o.label}</button>
+          className={cx('relative z-[1] min-h-[34px] rounded-md px-3 text-[13px] font-semibold transition-colors max-sm:min-h-[38px] max-sm:flex-none max-sm:whitespace-nowrap', value === o.value ? 'text-ink' : 'text-muted hover:text-ink', !ind && value === o.value && 'bg-surface shadow-sm')}>{o.label}</button>
       ))}
     </div>
   )
@@ -138,7 +141,7 @@ export function Segmented({ options, value, onChange, label }) {
 
 export function Toasts({ toasts }) {
   return (
-    <div aria-live="polite" className="pointer-events-none fixed bottom-24 left-1/2 z-[60] flex w-[min(92vw,420px)] -translate-x-1/2 flex-col gap-2 lg:bottom-6">
+    <div aria-live="polite" className="pointer-events-none fixed bottom-[calc(84px+env(safe-area-inset-bottom))] left-1/2 z-[60] flex w-[min(92vw,420px)] -translate-x-1/2 flex-col gap-2 lg:bottom-6">
       {toasts.map((t) => (
         <div key={t.id} className={cx('toast-in pointer-events-auto flex items-start gap-2.5 rounded-xl px-4 py-3 text-[14px] font-medium shadow-pop', t.kind === 'bad' ? 'bg-bad text-white' : t.kind === 'warn' ? 'bg-[#4A3410] text-white' : 'bg-ink text-white')}>
           <Icon name={t.kind === 'bad' || t.kind === 'warn' ? 'alert' : 'check'} size={17} className="mt-0.5 flex-none" />{t.text}

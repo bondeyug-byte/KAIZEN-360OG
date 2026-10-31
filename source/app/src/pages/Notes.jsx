@@ -16,6 +16,7 @@ export default function Notes({ query = {} }) {
   const openReqs = requestsFor(db.shared, me).filter((r) => r.status === REQ_STATUS.OPEN).length
   const [f, setF] = useState({ year: me.year || '', branch: me.branchId || '', subject: '', topic: '', subtopic: '', type: '', q: '', sort: 'new', mine: false })
   const [uploading, setUploading] = useState(false)
+  const [showMore, setShowMore] = useState(false)
   const [open, setOpen] = useState(null)
   const all = useMemo(() => browseNotes(db.shared, me, { year: f.year, branch: f.branch }), [db.shared, me, f.year, f.branch])
   const subjects = [...new Set(all.map((n) => n.subject))].sort()
@@ -23,7 +24,10 @@ export default function Notes({ query = {} }) {
   const subtopics = [...new Set(all.filter((n) => (!f.subject || n.subject === f.subject) && (!f.topic || n.topic === f.topic)).map((n) => n.subtopic).filter(Boolean))].sort()
   const list = browseNotes(db.shared, me, f)
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value, ...(k === 'year' || k === 'branch' ? { subject: '', topic: '', subtopic: '' } : k === 'subject' ? { topic: '', subtopic: '' } : k === 'topic' ? { subtopic: '' } : {}) })
-  const sel = (k, label, opts) => <label className="flex min-w-[130px] flex-1 flex-col gap-1 text-[12px] font-semibold text-muted">{label}<select className={inputCls} value={f[k]} onChange={set(k)}><option value="">All</option>{opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
+  // Phones: year, branch and search stay visible; the rest of the filters fold behind "More filters" (same filters).
+  const more = showMore ? '' : 'max-sm:hidden'
+  const extraOn = ['subject', 'topic', 'subtopic', 'type'].filter((k) => f[k]).length + (f.sort !== 'new' ? 1 : 0) + (f.mine ? 1 : 0)
+  const sel = (k, label, opts, cls = '') => <label className={cx('flex min-w-[130px] flex-1 flex-col gap-1 text-[12px] font-semibold text-muted', cls)}>{label}<select className={inputCls} value={f[k]} onChange={set(k)}><option value="">All</option>{opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
   return (
     <div>
       <PageHeader back title="Notes library" subtitle="Study material shared by students and teachers, organised by year, branch, subject, chapter and subtopic." actions={<Button icon="upload" onClick={() => setUploading(true)}>Share notes</Button>} />
@@ -33,11 +37,12 @@ export default function Notes({ query = {} }) {
         <label className="relative"><span className="sr-only">Search notes</span><Icon name="search" size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" /><input className={cx(inputCls, 'pl-9')} placeholder="Search titles, chapters, keywords" value={f.q} onChange={set('q')} /></label>
         <div className="flex flex-wrap gap-2">
           {sel('year', 'Year', YEARS.map((y) => [y.id, y.label]))}{sel('branch', 'Branch', BRANCHES.map((b) => [b.id, b.label]))}
-          {sel('subject', 'Subject', subjects.map((s) => [s, s]))}{sel('topic', 'Topic / chapter', topics.map((s) => [s, s]))}{sel('subtopic', 'Subtopic', subtopics.map((s) => [s, s]))}
-          {sel('type', 'File type', [['pdf', 'PDF'], ['image', 'Image']])}
-          <label className="flex min-w-[130px] flex-col gap-1 text-[12px] font-semibold text-muted">Sort<select className={inputCls} value={f.sort} onChange={set('sort')}><option value="new">Newest</option><option value="old">Oldest</option><option value="title">Title A–Z</option></select></label>
+          {sel('subject', 'Subject', subjects.map((s) => [s, s]), more)}{sel('topic', 'Topic / chapter', topics.map((s) => [s, s]), more)}{sel('subtopic', 'Subtopic', subtopics.map((s) => [s, s]), more)}
+          {sel('type', 'File type', [['pdf', 'PDF'], ['image', 'Image']], more)}
+          <label className={cx('flex min-w-[130px] flex-col gap-1 text-[12px] font-semibold text-muted', more)}>Sort<select className={inputCls} value={f.sort} onChange={set('sort')}><option value="new">Newest</option><option value="old">Oldest</option><option value="title">Title A–Z</option></select></label>
         </div>
-        <label className="flex items-center gap-2 text-[13.5px]"><input type="checkbox" className="h-4 w-4" checked={f.mine} onChange={set('mine')} />Only my uploads</label>
+        <label className={cx('flex items-center gap-2 text-[13.5px]', more)}><input type="checkbox" className="h-4 w-4" checked={f.mine} onChange={set('mine')} />Only my uploads</label>
+        <button type="button" onClick={() => setShowMore(!showMore)} aria-expanded={showMore} className="press -mb-1 inline-flex min-h-[40px] items-center gap-1.5 self-start rounded-lg px-1 text-[13.5px] font-semibold text-maroon sm:hidden"><Icon name="layers" size={15} />{showMore ? 'Fewer filters' : `More filters${extraOn ? ` (${extraOn} on)` : ''}`}</button>
       </Card>
       <p className="mb-2 text-[12.5px] text-muted" aria-live="polite">{list.length} note{list.length === 1 ? '' : 's'}</p>
       <div className="stagger grid gap-3 md:grid-cols-2">

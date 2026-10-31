@@ -53,7 +53,7 @@ export default function Events({ query = {} }) {
               </button>
               <dl className="flex flex-col gap-1 px-4 text-[13px] text-[#3B4048]">
                 <div className="flex items-center gap-2"><Icon name="clock" size={15} className="text-muted" />{timeRange(ev)}</div>
-                <div className="flex items-center gap-2"><Icon name="pin" size={15} className="text-muted" />{ev.place.label} <a className="font-semibold text-maroon hover:underline" href={venueHref(ev.place)}>Route</a></div>
+                <div className="flex items-center gap-2"><Icon name="pin" size={15} className="text-muted" />{ev.place.label} <a className="font-semibold text-maroon hover:underline max-lg:-my-2 max-lg:inline-flex max-lg:min-h-[36px] max-lg:items-center max-lg:px-1" href={venueHref(ev.place)}>Route</a></div>
                 {ev.capacity && <div className="flex items-center gap-2"><Icon name="user" size={15} className="text-muted" />{c.approved}/{ev.capacity} approved{c.pending ? ` · ${c.pending} pending` : ''}<span className="ml-1 h-1.5 w-20 overflow-hidden rounded-full bg-sand"><span className="bar-in block h-full rounded-full bg-maroon/70" style={{ width: `${Math.min(100, (c.approved / ev.capacity) * 100)}%` }} /></span></div>}
               </dl>
               <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-line bg-ground/50 px-4 py-2.5 [margin-top:12px]">
