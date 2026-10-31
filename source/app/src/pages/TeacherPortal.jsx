@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '../store/AppContext.jsx'
-import { PageHeader, Card, CardTitle, Button, Badge, Empty, Segmented, Dialog, Field, inputCls, relTime, fmtDateTime, cx } from '../components/ui.jsx'
+import { PageHeader, Card, CardTitle, Button, Badge, Empty, Segmented, GroupedTabs, Dialog, Field, inputCls, relTime, fmtDateTime, cx } from '../components/ui.jsx'
 import Icon from '../components/Icon.jsx'
 import AudiencePicker from '../components/AudiencePicker.jsx'
 import { FilePicker, ResourceViewer, ReviewList, TeacherChallenges } from './Challenges.jsx'
@@ -38,13 +38,17 @@ function CloudTeacher({ query }) {
   const c = session.counts || {}
   const divisions = t.divisions || [...new Set((t.teaches || []).map((x) => x.division))]
   const tabs = [['attendance', 'Attendance'], ['marks', 'Marks'], ['joins', `Join requests${c.pendingJoins ? ` (${c.pendingJoins})` : ''}`], ['roles', `Class roles${session.pendingRoles ? ` (${session.pendingRoles})` : ''}`], ['instructions', `Instructions from HOD${c.openInstructions ? ` (${c.openInstructions})` : ''}`],
-    ['send', 'Publish'], ['sent', 'Published'], ['calendar', 'Calendar'], ['reminder', 'Reminders'], ...(t.canPublishTimetable ? [['timetable', 'Timetable Schedule']] : []), ['tt', 'View timetables'], ['roster', 'Class lists'], ['alerts', 'Attendance alerts'], ['parents', 'Parents']]
+    ['send', 'Publish'], ['sent', 'Published'], ['calendar', 'Calendar'], ['reminder', 'Reminders'], ...(t.canPublishTimetable ? [['timetable', 'Upload timetable']] : []), ['tt', 'View timetables'], ['roster', 'Class lists'], ['alerts', 'Attendance alerts'], ['parents', 'Parents']]
+  const T = Object.fromEntries(tabs)
+  const pick = (...ks) => ks.filter((k) => T[k]).map((k) => [k, T[k]])
+  const groups = [['Class', pick('attendance', 'marks', 'roster', 'joins', 'roles', 'parents')], ['Publish', pick('send', 'sent', 'reminder', 'alerts')],
+    ['Timetable & calendar', pick('calendar', 'tt', 'timetable')], [`From HOD${c.openInstructions ? ` (${c.openInstructions})` : ''}`, pick('instructions')]]
   const [tab, setTab] = useState(tabs.some((x) => x[0] === query.tab) ? query.tab : 'joins')
   useEffect(() => { if (query.tab) setTab(query.tab) }, [query.tab])
   return (
     <div>
       <PageHeader title="Teacher portal" subtitle={divisions.length ? `Your divisions: ${divisions.join(', ')}. Everything here is saved on the college server and checked there.` : 'You have no divisions yet. Ask your HOD to assign them.'} actions={<a href="#/setup?edit=1" className="text-[13px] font-semibold text-maroon underline">My profile details</a>} />
-      <div className="mb-4 overflow-x-auto"><Segmented label="Teacher section" value={tab} onChange={setTab} options={tabs.map(([value, label]) => ({ value, label }))} /></div>
+      <GroupedTabs label="Teacher section" groups={groups} value={tab} onChange={setTab} />
       {tab === 'joins' && (divisions.length ? <JoinRequests /> : <Empty icon="user" title="No divisions assigned">Join requests appear here once your HOD assigns your divisions.</Empty>)}
       {tab === 'roles' && <ClassRoles />}
       {tab === 'calendar' && <TeacherCalendar />}

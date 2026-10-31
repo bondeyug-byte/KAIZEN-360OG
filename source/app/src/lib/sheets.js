@@ -37,7 +37,8 @@ function readXlsx(bytes) {
     const sx = get(target)
     if (!sx) continue
     const rows = []
-    for (const row of kids(xml(sx), 'row')) {
+    const doc = xml(sx)
+    for (const row of kids(doc, 'row')) {
       const ri = Number(row.getAttribute('r')) - 1
       const cells = []
       for (const c of kids(row, 'c')) {
@@ -57,7 +58,9 @@ function readXlsx(bytes) {
       if (ri >= 0 && ri < 6000) rows[ri] = cells
     }
     for (let i = 0; i < rows.length; i++) if (!rows[i]) rows[i] = []
-    out.push({ name: s.getAttribute('name') || `Sheet${out.length + 1}`, rows })
+    // Merged cells (e.g. a two-hour lab spanning two time rows in the college timetable), as "F5:F6" ranges.
+    const merges = kids(doc, 'mergeCell').map((m) => m.getAttribute('ref')).filter((r) => /^[A-Z]{1,3}\d{1,5}:[A-Z]{1,3}\d{1,5}$/.test(r || '')).slice(0, 4000)
+    out.push({ name: s.getAttribute('name') || `Sheet${out.length + 1}`, rows, merges })
   }
   if (!out.length) throw new SheetError('The workbook has no readable sheets.')
   return out

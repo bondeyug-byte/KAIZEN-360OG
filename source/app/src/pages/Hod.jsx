@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../store/AppContext.jsx'
-import { PageHeader, Card, CardTitle, Button, Badge, Empty, Segmented, Field, inputCls, relTime, ConfirmButton } from '../components/ui.jsx'
+import { PageHeader, Card, CardTitle, Button, Badge, Empty, Segmented, GroupedTabs, Field, inputCls, relTime, ConfirmButton } from '../components/ui.jsx'
 import { useLoad, Loading, useCatalog, DivisionPicker, JoinRequests, Roster } from '../components/CloudPortal.jsx'
 import { api } from '../lib/portal.js'
 import { AlertsManager, EventsManager, ParentLinkRequests, AttendanceThreshold } from '../components/Records.jsx'
@@ -12,6 +12,9 @@ import { BranchView, Divisions, ClubsAdmin } from '../components/HodBranch.jsx'
  * by the server against the HOD's own branch. No classroom screens: no own timetable, classes or attendance.
  */
 const TABS = [['dashboard', 'Dashboard'], ['branch', 'Branch view'], ['teachers', 'Teachers'], ['divisions', 'Divisions & syllabus'], ['instructions', 'Instructions'], ['send', 'Publish'], ['published', 'Published in branch'], ['roles', 'Class roles'], ['overrides', 'Join requests'], ['alerts', 'Attendance alerts'], ['events', 'Events'], ['clubs', 'Clubs & councils'], ['parents', 'Parents'], ['audit', 'Audit log']]
+const T = Object.fromEntries(TABS), pick = (...ks) => ks.map((k) => [k, T[k]])
+const GROUPS = [['Overview', pick('dashboard', 'branch', 'audit')], ['People & classes', pick('teachers', 'divisions', 'roles', 'overrides', 'parents')],
+  ['Publish', pick('send', 'published', 'instructions', 'events', 'alerts')], ['Clubs', pick('clubs')]]
 export default function Hod({ query = {} }) {
   const { me, session } = useApp()
   const [tab, setTab] = useState(TABS.some((t) => t[0] === query.tab) ? query.tab : 'dashboard')
@@ -20,7 +23,7 @@ export default function Hod({ query = {} }) {
   return (
     <div>
       <PageHeader title="HOD portal" subtitle={`Branch: ${(session.hod?.branches || []).join(', ')}. Every change here is recorded in the audit log.`} />
-      <div className="mb-4 overflow-x-auto"><Segmented label="HOD section" value={tab} onChange={setTab} options={TABS.map(([value, label]) => ({ value, label }))} /></div>
+      <GroupedTabs label="HOD section" groups={GROUPS} value={tab} onChange={setTab} />
       {tab === 'dashboard' && <Dashboard go={setTab} />}
       {tab === 'teachers' && <Teachers />}
       {tab === 'instructions' && <Instructions />}

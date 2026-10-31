@@ -139,6 +139,28 @@ export function Segmented({ options, value, onChange, label }) {
   )
 }
 
+/**
+ * Two-level section menu for portals with many screens: first a section (e.g. Class, Publish), then the screens in it.
+ * groups: [[sectionLabel, [[value, label], ...]], ...]. `value` is the screen; picking a section opens its first screen.
+ */
+export function GroupedTabs({ groups, value, onChange, label }) {
+  const list = groups.filter(([, items]) => items.length)
+  const current = list.find(([, items]) => items.some(([v]) => v === value)) || list[0]
+  const [, items] = current || [null, []]
+  return (
+    <div className="mb-4 flex flex-col gap-2">
+      <div className="overflow-x-auto"><Segmented label={label} value={current?.[0]} onChange={(g) => { const it = list.find(([l]) => l === g); if (it) onChange(it[1][0][0]) }} options={list.map(([l, its]) => ({ value: l, label: l + (its.some(([, t]) => /\(\d+\)$/.test(t)) ? ' •' : '') }))} /></div>
+      {items.length > 1 && (
+        <div role="tablist" aria-label={`${current[0]} screens`} className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none]">
+          {items.map(([v, t]) => (
+            <button key={v} type="button" role="tab" aria-selected={v === value} onClick={() => onChange(v)}
+              className={cx('press min-h-[34px] flex-none whitespace-nowrap rounded-full border px-3 text-[13px] font-semibold max-sm:min-h-[38px]', v === value ? 'border-brand bg-brand text-white' : 'border-line2 bg-surface text-[#3B4048] hover:border-brand/50')}>{t}</button>
+          ))}
+        </div>)}
+    </div>
+  )
+}
+
 export function Toasts({ toasts }) {
   return (
     <div aria-live="polite" className="pointer-events-none fixed bottom-[calc(84px+env(safe-area-inset-bottom))] left-1/2 z-[60] flex w-[min(92vw,420px)] -translate-x-1/2 flex-col gap-2 lg:bottom-6">

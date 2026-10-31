@@ -489,14 +489,14 @@ export function TimetableSchedule() {
     <div className="flex flex-col gap-4">
       <Card className="max-w-3xl">
         <CardTitle eyebrow="Teacher portal">Timetable Schedule</CardTitle>
-        <p className="mt-1 text-[13.5px] text-muted">Upload the timetable Excel (.xlsx; .csv also works). Every row is checked first. Nothing reaches students until you confirm the preview; then they see it the next time they open or refresh the app.</p>
+        <p className="mt-1 text-[13.5px] text-muted">Upload the timetable Excel exactly as the college sends it (days, time slots and a column per division, like the FE timetable). Two-hour labs, batch splits (“BATCH I / BATCH II”) and tutorials are read from the cells. Every cell is checked first and nothing reaches students until you confirm the preview.</p>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <Field label="Term name">{(id) => <input id={id} className={inputCls} value={term} maxLength={40} onChange={(e) => setTerm(e.target.value)} />}</Field>
           <label className={cx('press inline-flex min-h-[40px] cursor-pointer items-center gap-2 rounded-lg bg-brand px-4 text-[14px] font-semibold text-white', phase === 'reading' && 'pointer-events-none opacity-60')}>
             <Icon name="upload" size={16} />{phase === 'reading' ? 'Checking…' : 'Upload Excel file'}
             <input type="file" accept=".xlsx,.csv" className="sr-only" onChange={onFile} disabled={phase === 'reading'} />
           </label>
-          <a className="text-[13.5px] font-semibold text-brand underline" href="/timetable-template.xlsx" download>Download the template</a>
+          <a className="text-[13.5px] font-semibold text-brand underline" href="/timetable-template.xlsx" download>Download the template (college layout)</a>
         </div>
         {readErr && <p role="alert" className="mt-3 text-[13.5px] text-bad">{readErr}</p>}
       </Card>
