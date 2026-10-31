@@ -759,7 +759,9 @@ module.exports = async (req, res) => {
     if (e instanceof HttpError) return res.status(e.status).json({ ok: false, code: e.code, error: e.message, ...(e.extra || {}) });
     if (e && e.code === 'DB_NOT_CONFIGURED') return res.status(503).json({ ok: false, code: 'DB_NOT_CONFIGURED', error: 'Cloud sync is not configured on the server.' });
     if (e && e.code === '23505') return res.status(409).json({ ok: false, code: 'CONFLICT', error: 'Someone else just made that change. Refresh and try again.' });
-    console.error('app api error', route, e && e.code); // no personal data in logs
-    return res.status(500).json({ ok: false, code: 'SERVER_ERROR', error: 'Something went wrong. Try again.' });
+    console.error('app api error', route, e && e.code, e && e.message && e.message.slice(0, 200)); // database error text has no personal data
+    // A short reference (the database error code) so a failure can be traced; never the query or any data.
+    const ref = e && typeof e.code === 'string' && /^[0-9A-Z]{5}$/.test(e.code) ? e.code : null;
+    return res.status(500).json({ ok: false, code: 'SERVER_ERROR', error: `Something went wrong. Try again.${ref ? ` (ref ${ref})` : ''}`, ref });
   }
 };

@@ -527,7 +527,7 @@ module.exports = (H) => {
       `select w.phone as email, w.name, w.active, coalesce(json_agg(json_build_object('division', t.division_code, 'subject', t.subject) order by t.division_code) filter (where t.division_code is not null), '[]') as teaches
          from teacher_whitelist w left join teacher_divisions t on t.teacher_phone = w.phone and t.division_code = any($2)
         where w.branch_code = $1 or exists (select 1 from teacher_divisions x where x.teacher_phone = w.phone and x.division_code = any($2))
-        group by w.phone order by w.active desc, w.name limit 300`, [br, divs]);
+        group by w.phone, w.name, w.active order by w.active desc, w.name limit 300`, [br, divs]); // every selected column is grouped, so it doesn't rely on table keys
     const attendance = await db.q(
       `select a.id, a.name, s.profile->>'roll' as roll, e.division_code, t.total, t.present
          from class_enrollments e join accounts a on a.id = e.student_id left join account_state s on s.account_id = a.id
@@ -541,7 +541,7 @@ module.exports = (H) => {
           count(m.obtained)::int as entered, round(avg(m.obtained)::numeric, 1) as average, count(*) filter (where m.absent)::int as absent
          from assessments a left join assessment_marks m on m.assessment_id = a.id
         where a.division_code = any($1) and ($2::text = '' or a.subject = $2) and ($3::date is null or a.held_on >= $3::date) and ($4::date is null or a.held_on <= $4::date)
-        group by a.id order by a.held_on desc nulls last limit 200`, [divs, subject, from, to]);
+        group by a.id, a.division_code, a.subject, a.name, a.held_on, a.max_marks, a.status order by a.held_on desc nulls last limit 200`, [divs, subject, from, to]);
     const items = await db.q(
       `select p.id, p.kind, p.title, p.subject, p.status, p.author_name, p.created_at, p.due_at, to_char(p.event_date, 'YYYY-MM-DD') as event_date,
           (select array_agg(division_code order by division_code) from post_targets x where x.post_id = p.id and x.division_code = any($1)) as divisions
