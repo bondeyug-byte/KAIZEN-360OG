@@ -57,7 +57,11 @@ export default function Landing() {
       const h = document.documentElement, y = window.scrollY
       if (bar.current) bar.current.style.width = (y / Math.max(1, h.scrollHeight - innerHeight)) * 100 + '%'
       if (y > 40 && hint.current) hint.current.style.opacity = 0
-      if (hero.current && col.current) { const hp = Math.min(1, y / Math.max(1, hero.current.offsetHeight - innerHeight)); col.current.style.setProperty('--r', 150 + hp * Math.hypot(innerWidth, innerHeight) + 'px') }
+      if (hero.current && col.current) {
+        const hp = Math.min(1, y / Math.max(1, hero.current.offsetHeight - innerHeight))
+        col.current.style.setProperty('--r', 150 + hp * Math.hypot(innerWidth, innerHeight) + 'px')
+        hero.current.style.setProperty('--hp', hp.toFixed(4)) // the headline rises and fades as the photo opens (it no longer sits pinned)
+      }
       if (walk.current && track.current) {
         const r = walk.current.getBoundingClientRect(), wp = Math.min(1, Math.max(0, -r.top / Math.max(1, walk.current.offsetHeight - innerHeight)))
         track.current.style.transform = `translateX(${-wp * Math.max(0, track.current.scrollWidth - innerWidth)}px)`
@@ -166,7 +170,8 @@ const CSS = `
 .lv2 h2{font-size:clamp(40px,7vw,110px)}
 .lv2 em{font-style:italic;color:var(--lime)}
 .lv2 .hero{height:260vh;position:relative}
-.lv2 .sticky{position:sticky;top:0;height:100vh;overflow:hidden}
+.lv2 .sticky{position:sticky;top:0;height:100vh;height:100svh;overflow:hidden}
+.lv2 .hero h1,.lv2 .hero p.s{transform:translate3d(0,calc(var(--hp,0) * -38vh),0);opacity:calc(1 - var(--hp,0) * 1.6);will-change:transform,opacity}
 .lv2 .ph{position:absolute;inset:-4%;background:var(--moss) center/cover;animation:lv2kb 24s ease-in-out infinite alternate}
 .lv2 .ph.mono{filter:grayscale(1) brightness(.45) contrast(1.2)}
 .lv2 .ph.col{-webkit-mask-image:radial-gradient(circle var(--r,150px) at var(--x,50%) var(--y,50%),#000 60%,transparent 100%);mask-image:radial-gradient(circle var(--r,150px) at var(--x,50%) var(--y,50%),#000 60%,transparent 100%)}
@@ -221,5 +226,5 @@ const CSS = `
 .lv2 footer a{color:var(--paper)}
 .lv2 .rv{opacity:0;transform:translateY(40px);transition:1s cubic-bezier(.2,.8,.2,1)}.lv2 .rv.in{opacity:1;transform:none}
 @media (max-width:800px){.lv2 .map{grid-template-columns:1fr}.lv2 .role{flex-direction:column;gap:6px}.lv2 .role span{text-align:left}.lv2 .card{flex-basis:84vw}.lv2 .hero p.s{left:clamp(20px,5vw,80px);right:auto;bottom:5vh}.lv2 .hero h1{bottom:18vh}.lv2 .lbl2{display:none}.lv2 .lbl{font-size:30px}}
-@media (prefers-reduced-motion:reduce){.lv2 *{animation:none!important;transition:none!important}.lv2 .rv,.lv2 .hero h1 .ch{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.lv2 .hero h1,.lv2 .hero p.s{transform:none;opacity:1}.lv2 *{animation:none!important;transition:none!important}.lv2 .rv,.lv2 .hero h1 .ch{opacity:1;transform:none}}
 `
